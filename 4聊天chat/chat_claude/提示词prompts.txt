@@ -1,0 +1,56 @@
+使用Python和FastAPI框架生成一个类似微信的简单聊天应用，所有代码集成在同一个项目目录中。项目目录结构如下：
+
+```
+chat_app/
+├── main.py
+├── models/
+│   ├── user.py
+│   ├── room.py
+│   └── message.py
+├── schemas/
+│   ├── user.py
+│   ├── room.py
+│   └── message.py
+├── services/
+│   ├── auth_service.py
+│   ├── chat_service.py
+│   └── ws_service.py
+├── database.py
+├── frontend/
+│   ├── public/
+│   │   └── index.html
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── ChatRoom.tsx
+│   │   ├── Login.tsx
+│   │   ├── Register.tsx
+│   │   └── UserList.tsx
+│   └── package.json
+└── Dockerfile
+```
+
+包含以下功能模块：
+1. 用户注册和登录系统：用户可以注册新账户并登录。
+   - 用户模型包括用户名、密码（加密存储）、邮箱等字段。
+   - 注册接口验证用户名唯一性，登录接口验证用户名和密码匹配。
+   
+2. 聊天室功能：用户可以创建聊天室并邀请其他用户加入。
+   - 聊天室模型包括房间名、创建者ID、成员列表等字段。
+   - 创建房间接口需要验证用户身份。
+   
+3. 消息发送和接收：用户可以在聊天室内发送和接收文本消息。
+   - 消息模型包括发送者ID、接收者ID/聊天室ID、消息内容等字段。
+   - 发送消息接口需要验证用户是否属于该聊天室。
+   
+4. 在线用户列表：实时显示当前在线用户的列表。
+   - 使用WebSocket实现实时更新在线用户列表。
+
+技术细节要求：
+- 使用FastAPI作为Web框架。
+- 使用SQLAlchemy ORM操作MySQL数据库存储用户信息和聊天记录。
+- 前端界面使用React（TSX）编写，确保基本的响应式设计。
+- 使用WebSocket实现实时消息传递，前端使用WebSocket API连接到后端服务。
+- 集成JWT（JSON Web Tokens）用于用户身份认证。
+- 添加Dockerfile支持容器化部署。
+
+请根据上述要求生成完整的代码。

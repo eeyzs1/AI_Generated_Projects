@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest --version)",
+      "Bash(python -c \"import httpx; print\\(''httpx ok''\\)\")",
+      "Bash(python -c \"import fastapi, sqlalchemy, jose, passlib, pydantic_settings; print\\(''all ok''\\)\")",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(python -m pytest tests/test_auth.py::TestRegister::test_register_success -v --tb=long)",
+      "Bash(python -m pytest tests/test_ws_service.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_auth.py -v --tb=short)"
+    ]
+  }
+}
