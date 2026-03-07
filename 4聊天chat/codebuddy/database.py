@@ -1,18 +1,14 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import QueuePool
 
-# MySQL数据库连接配置
-DATABASE_URL = "mysql+pymysql://root:password@localhost:3306/chat_app?charset=utf8mb4"
+# SQLite数据库连接配置
+DATABASE_URL = "sqlite:///./chat_app.db"
 
 # 创建数据库引擎
 engine = create_engine(
     DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
+    connect_args={"check_same_thread": False},
     echo=False
 )
 

@@ -3,8 +3,8 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from ..models import User
-from ..schemas import UserCreate, Token, TokenData
+from models import User
+from schemas import UserCreate, Token, TokenData
 
 # JWT配置
 SECRET_KEY = "your-secret-key-change-this-in-production"
@@ -12,7 +12,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", truncate_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -66,7 +66,8 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
 
 def create_user(db: Session, user: UserCreate) -> User:
     """创建新用户"""
-    hashed_password = get_password_hash(user.password)
+    # bcrypt限制密码长度为72字节
+    hashed_password = get_password_hash(user.password[:72])
     db_user = User(
         username=user.username,
         email=user.email,

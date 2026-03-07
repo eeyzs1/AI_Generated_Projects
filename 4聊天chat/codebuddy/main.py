@@ -1,3 +1,9 @@
+import sys
+import os
+
+# 添加当前目录到Python路径
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +19,7 @@ from schemas import (
 )
 from services import (
     create_user, authenticate_user, create_access_token,
-    verify_token, get_user_by_id, get_all_users,
+    verify_token, get_user_by_id, get_user_by_username, get_all_users,
     create_room, get_user_rooms, get_room_detail, add_member_to_room,
     create_message, get_room_messages, update_user_online_status,
     manager
@@ -71,22 +77,33 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     """用户注册"""
     from services import get_user_by_username, get_user_by_email
 
-    # 检查用户名是否已存在
-    if get_user_by_username(db, user.username):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
-    # 检查邮箱是否已存在
-    if get_user_by_email(db, user.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    try:
+        # 检查用户名是否已存在
+        if get_user_by_username(db, user.username):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+        # 检查邮箱是否已存在
+        if get_user_by_email(db, user.email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
 
-    # 创建用户
-    db_user = create_user(db, user)
-    return db_user
+        # 创建用户
+        db_user = create_user(db, user)
+        return db_user
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Registration error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 
 @app.post("/api/auth/login", response_model=Token)
@@ -304,4 +321,4 @@ async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Dep
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

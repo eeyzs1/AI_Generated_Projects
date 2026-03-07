@@ -1,7 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from ..models import Room, RoomMember, Message, User
-from ..schemas import RoomCreate, RoomDetail, MessageCreate, AddMember
+from models import Room, RoomMember, Message, User
+from schemas import RoomCreate, RoomDetail, MessageCreate, AddMember
 
 
 def create_room(db: Session, room: RoomCreate, creator_id: int) -> Room:
