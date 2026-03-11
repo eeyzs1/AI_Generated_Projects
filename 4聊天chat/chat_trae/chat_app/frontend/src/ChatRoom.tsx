@@ -5,7 +5,7 @@ interface User {
   username: string;
   email: string;
   created_at: string;
-  is_active: number;
+  is_active: boolean;
 }
 
 interface Room {
@@ -25,6 +25,16 @@ interface Message {
   sender: User | null;
 }
 
+interface Invitation {
+  id: number;
+  room_id: number;
+  room_name: string;
+  inviter_id: number;
+  inviter_name: string;
+  status: string;
+  created_at: string;
+}
+
 interface ChatRoomProps {
   user: User;
   onLogout: () => void;
@@ -38,6 +48,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
   const [newRoomName, setNewRoomName] = useState('');
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<number[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [inviteeUsername, setInviteeUsername] = useState('');
+  const [showInvitations, setShowInvitations] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // 加载聊天室列表
@@ -48,7 +61,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
       }
     })
     .then(response => response.json())
-    .then(data => setRooms(data));
+    .then(data => setRooms(Array.isArray(data) ? data : []));
+  }, []);
+  
+  // 加载邀请列表
+  useEffect(() => {
+    fetch('http://localhost:8000/invitations', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    .then(response => response.json())
+    .then(data => setInvitations(Array.isArray(data) ? data : []));
   }, []);
   
   // 初始化WebSocket连接
@@ -63,7 +87,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
       const data = JSON.parse(event.data);
       
       if (data.type === 'online_users') {
-        setOnlineUsers(data.users);
+        setOnlineUsers(Array.isArray(data.users) ? data.users : []);
       } else if (data.type === 'message') {
         setMessages(prev => [
           {
@@ -74,7 +98,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
             created_at: data.created_at,
             sender: null
           },
-          ...prev
+          ...(Array.isArray(prev) ? prev : [])
         ]);
       }
     };
@@ -106,7 +130,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
       }
     })
     .then(response => response.json())
-    .then(data => setMessages(data));
+    .then(data => setMessages(Array.isArray(data) ? data : []));
     
     // 加入WebSocket房间
     if (ws) {
@@ -131,7 +155,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
     })
     .then(response => response.json())
     .then(data => {
-      setRooms(prev => [...prev, data]);
+      setRooms(prev => [...(Array.isArray(prev) ? prev : []), data]);
       setNewRoomName('');
     });
   };
@@ -149,13 +173,112 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
     setNewMessage('');
   };
   
+  // 发送邀请
+  const handleSendInvitation = () => {
+    if (!inviteeUsername || !selectedRoom) return;
+    
+    // 首先根据username获取userId
+    fetch(`http://localhost:8000/users/${inviteeUsername}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('User not found');
+      }
+      return response.json();
+    })
+    .then(user => {
+      // 然后发送邀请
+      return fetch('http://localhost:8000/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          room_id: selectedRoom.id,
+          invitee_id: user.id
+        })
+      });
+    })
+    .then(response => response.json())
+    .then(data => {
+      setInviteeUsername('');
+      alert('Invitation sent successfully!');
+    })
+    .catch(error => {
+      alert('Failed to send invitation. User not found.');
+      console.error(error);
+    });
+  };
+  
+  // 处理邀请
+  const handleInvitationAction = (invitationId: number, action: string) => {
+    fetch(`http://localhost:8000/invitations/${invitationId}/action`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ action })
+    })
+    .then(response => response.json())
+    .then(data => {
+      // 更新邀请列表
+      setInvitations(prev => (Array.isArray(prev) ? prev : []).filter(inv => inv.id !== invitationId));
+      // 如果接受邀请，重新加载聊天室列表
+      if (action === 'accepted') {
+        fetch('http://localhost:8000/rooms', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        })
+        .then(response => response.json())
+        .then(data => setRooms(Array.isArray(data) ? data : []));
+      }
+    });
+  };
+  
   return (
     <div className="chat-container">
       <div className="sidebar">
         <div className="sidebar-header">
           <h2>Chat App</h2>
-          <button onClick={onLogout}>Logout</button>
+          <div className="header-buttons">
+            <button onClick={() => setShowInvitations(!showInvitations)}>
+              Invitations ({Array.isArray(invitations) ? invitations.filter(inv => inv.status === 'pending').length : 0})
+            </button>
+            <button onClick={onLogout}>Logout</button>
+          </div>
         </div>
+        
+        {showInvitations && (
+          <div className="invitations-list">
+            <h3>Pending Invitations</h3>
+            {Array.isArray(invitations) && invitations.filter(inv => inv.status === 'pending').length > 0 ? (
+              invitations.filter(inv => inv.status === 'pending').map(invitation => (
+                <div key={invitation.id} className="invitation-item">
+                  <div className="invitation-info">
+                    <div>Room: {invitation.room_name}</div>
+                    <div>Invited by: {invitation.inviter_name}</div>
+                  </div>
+                  <div className="invitation-actions">
+                    <button onClick={() => handleInvitationAction(invitation.id, 'accepted')}>
+                      Accept
+                    </button>
+                    <button onClick={() => handleInvitationAction(invitation.id, 'rejected')}>
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p>No pending invitations</p>
+            )}
+          </div>
+        )}
         
         <div className="create-room">
           <input
@@ -169,7 +292,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
         
         <div className="room-list">
           <h3>Rooms</h3>
-          {rooms.map(room => (
+          {Array.isArray(rooms) && rooms.map(room => (
             <div
               key={room.id}
               className={`room-item ${selectedRoom?.id === room.id ? 'active' : ''}`}
@@ -201,17 +324,28 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
           <>
             <div className="chat-header">
               <h2>{selectedRoom.name}</h2>
-              <div className="room-members">
-                {selectedRoom.members.map(member => (
-                  <span key={member.id} className="member">
-                    {member.username}
-                  </span>
-                ))}
+              <div className="room-actions">
+                <div className="invite-user">
+                  <input
+                    type="text"
+                    placeholder="Username to invite"
+                    value={inviteeUsername}
+                    onChange={(e) => setInviteeUsername(e.target.value)}
+                  />
+                  <button onClick={handleSendInvitation}>Invite</button>
+                </div>
+                <div className="room-members">
+                  {(selectedRoom.members && Array.isArray(selectedRoom.members)) ? selectedRoom.members.map(member => (
+                    <span key={member.id} className="member">
+                      {member.username}
+                    </span>
+                  )) : null}
+                </div>
               </div>
             </div>
             
             <div className="messages-container">
-              {messages.map(message => (
+              {Array.isArray(messages) && messages.map(message => (
                 <div
                   key={message.id}
                   className={`message ${message.sender_id === user.id ? 'own' : ''}`}

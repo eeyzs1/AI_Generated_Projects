@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Register: React.FC = () => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +31,10 @@ const Register: React.FC = () => {
       setEmail('');
       setPassword('');
       setError('');
+      // 注册成功后跳转到登录页面
+      setTimeout(() => {
+        navigate('/login');
+      }, 1000);
     })
     .catch(err => {
       setError('Registration failed. Username or email may already exist.');

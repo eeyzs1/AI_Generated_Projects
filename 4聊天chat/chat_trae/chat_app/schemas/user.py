@@ -15,7 +15,7 @@ class UserLogin(BaseModel):
 class User(UserBase):
     id: int
     created_at: datetime
-    is_active: int
+    is_active: bool
     
     class Config:
         from_attributes = True

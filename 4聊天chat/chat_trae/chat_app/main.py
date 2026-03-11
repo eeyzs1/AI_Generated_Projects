@@ -1,15 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import List
+import json
 
 from database import get_db, engine, Base
 from models.user import User
 from models.room import Room
 from models.message import Message
 from schemas.user import UserCreate, User as UserSchema, Token, UserLogin
-from schemas.room import RoomCreate, Room as RoomSchema
+from schemas.room import RoomCreate, Room as RoomSchema, RoomInvitationCreate, RoomInvitation, RoomInvitationResponse, InvitationAction
 from schemas.message import MessageCreate, Message as MessageSchema
 from services.auth_service import (
     get_password_hash, authenticate_user, create_access_token, 
@@ -17,7 +18,8 @@ from services.auth_service import (
 )
 from services.chat_service import (
     create_room, get_user_rooms, get_room, add_user_to_room,
-    send_message, get_room_messages, get_room_members, is_user_in_room
+    send_message, get_room_messages, get_room_members, is_user_in_room,
+    send_invitation, get_user_invitations, handle_invitation, get_invitation
 )
 from services.ws_service import manager
 
@@ -37,12 +39,16 @@ app.add_middleware(
 )
 
 # 依赖项：获取当前用户
-async def get_current_user(token: str = Depends(lambda x: x.headers.get("Authorization").split(" ")[1] if x.headers.get("Authorization") else None), db: Session = Depends(get_db)):
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise credentials_exception
+    token = auth_header.split(" ")[1] if len(auth_header.split(" ")) > 1 else None
     if not token:
         raise credentials_exception
     token_data = verify_token(token, credentials_exception)
@@ -101,6 +107,17 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @app.get("/users/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+# 根据username获取用户信息
+@app.get("/users/{username}", response_model=UserSchema)
+def get_user_by_username(username: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return user
 
 # 创建聊天室
 @app.post("/rooms", response_model=RoomSchema)
@@ -242,7 +259,59 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
             0  # 全局房间
         )
 
+# 发送邀请
+@app.post("/invitations", response_model=RoomInvitation)
+def send_new_invitation(invitation: RoomInvitationCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_invitation = send_invitation(db, invitation, current_user.id)
+    if not db_invitation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invitation failed. Either you're not in the room, the user is already in the room, or there's already a pending invitation."
+        )
+    return db_invitation
+
+# 获取用户收到的邀请
+@app.get("/invitations", response_model=List[RoomInvitationResponse])
+def get_invitations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    invitations = get_user_invitations(db, current_user.id)
+    # 转换为响应格式
+    response_invitations = []
+    for invitation in invitations:
+        room = get_room(db, invitation.room_id)
+        inviter = db.query(User).filter(User.id == invitation.inviter_id).first()
+        response_invitations.append(RoomInvitationResponse(
+            id=invitation.id,
+            room_id=invitation.room_id,
+            room_name=room.name if room else "Unknown Room",
+            inviter_id=invitation.inviter_id,
+            inviter_name=inviter.username if inviter else "Unknown User",
+            status=invitation.status,
+            created_at=invitation.created_at
+        ))
+    return response_invitations
+
+# 处理邀请
+@app.post("/invitations/{invitation_id}/action")
+def handle_invitation_action(invitation_id: int, action: InvitationAction, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if action.action not in ["accepted", "rejected"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid action. Must be 'accepted' or 'rejected'."
+        )
+    result = handle_invitation(db, invitation_id, current_user.id, action.action)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invitation not found or already processed"
+        )
+    return {"detail": f"Invitation {action.action}ed successfully"}
+
 # 根路径
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Chat App API"}
+
+# 启动服务器
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -12,14 +12,18 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 # 验证密码
 def verify_password(plain_password, hashed_password):
+    # bcrypt限制密码长度不能超过72字节
+    plain_password = plain_password[:72]
     return pwd_context.verify(plain_password, hashed_password)
 
 # 获取密码哈希
 def get_password_hash(password):
+    # bcrypt限制密码长度不能超过72字节
+    password = password[:72]
     return pwd_context.hash(password)
 
 # 根据用户名获取用户

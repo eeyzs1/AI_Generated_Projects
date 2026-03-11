@@ -2,11 +2,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# MySQL数据库连接URL
-DATABASE_URL = "mysql+pymysql://root:password@localhost:3306/chat_app"
+# SQLite数据库连接URL
+DATABASE_URL = "sqlite:///./chat_app.db"
 
 # 创建数据库引擎
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

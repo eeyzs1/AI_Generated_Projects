@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
-from models.room import Room, room_members
+from models.room import Room, room_members, RoomInvitation
 from models.message import Message
 from models.user import User
-from schemas.room import RoomCreate
+from schemas.room import RoomCreate, RoomInvitationCreate
 from schemas.message import MessageCreate
 
 # 创建聊天室
@@ -71,3 +71,65 @@ def get_room_messages(db: Session, room_id: int, skip: int = 0, limit: int = 100
 # 获取聊天室成员
 def get_room_members(db: Session, room_id: int):
     return db.query(User).join(room_members).filter(room_members.c.room_id == room_id).all()
+
+# 发送邀请
+def send_invitation(db: Session, invitation: RoomInvitationCreate, inviter_id: int):
+    # 检查邀请者是否在聊天室中
+    if not is_user_in_room(db, invitation.room_id, inviter_id):
+        return None
+    
+    # 检查被邀请者是否已在聊天室中
+    if is_user_in_room(db, invitation.room_id, invitation.invitee_id):
+        return None
+    
+    # 检查是否已有待处理的邀请
+    existing_invitation = db.query(RoomInvitation).filter(
+        RoomInvitation.room_id == invitation.room_id,
+        RoomInvitation.invitee_id == invitation.invitee_id,
+        RoomInvitation.status == "pending"
+    ).first()
+    
+    if existing_invitation:
+        return existing_invitation
+    
+    # 创建新邀请
+    db_invitation = RoomInvitation(
+        room_id=invitation.room_id,
+        inviter_id=inviter_id,
+        invitee_id=invitation.invitee_id,
+        status="pending"
+    )
+    db.add(db_invitation)
+    db.commit()
+    db.refresh(db_invitation)
+    return db_invitation
+
+# 获取用户收到的邀请
+def get_user_invitations(db: Session, user_id: int):
+    return db.query(RoomInvitation).filter(RoomInvitation.invitee_id == user_id).all()
+
+# 处理邀请
+def handle_invitation(db: Session, invitation_id: int, user_id: int, action: str):
+    # 获取邀请
+    invitation = db.query(RoomInvitation).filter(
+        RoomInvitation.id == invitation_id,
+        RoomInvitation.invitee_id == user_id,
+        RoomInvitation.status == "pending"
+    ).first()
+    
+    if not invitation:
+        return None
+    
+    # 更新邀请状态
+    invitation.status = action
+    db.commit()
+    
+    # 如果接受邀请，添加用户到聊天室
+    if action == "accepted":
+        add_user_to_room(db, invitation.room_id, user_id)
+    
+    return invitation
+
+# 获取邀请详情
+def get_invitation(db: Session, invitation_id: int):
+    return db.query(RoomInvitation).filter(RoomInvitation.id == invitation_id).first()

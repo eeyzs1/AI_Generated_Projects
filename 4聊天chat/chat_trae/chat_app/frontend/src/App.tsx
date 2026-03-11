@@ -10,7 +10,7 @@ interface User {
   username: string;
   email: string;
   created_at: string;
-  is_active: number;
+  is_active: boolean;
 }
 
 const App: React.FC = () => {
@@ -52,8 +52,8 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/login" element={token ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
           <Route path="/register" element={token ? <Navigate to="/" /> : <Register />} />
-          <Route path="/" element={token ? <ChatRoom user={user!} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-          <Route path="/users" element={token ? <UserList user={user!} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+          <Route path="/" element={token ? (user ? <ChatRoom user={user} onLogout={handleLogout} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/users" element={token ? (user ? <UserList user={user} onLogout={handleLogout} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
         </Routes>
       </div>
     </Router>

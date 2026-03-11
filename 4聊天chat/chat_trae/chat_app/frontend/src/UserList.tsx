@@ -5,7 +5,7 @@ interface User {
   username: string;
   email: string;
   created_at: string;
-  is_active: number;
+  is_active: boolean;
 }
 
 interface UserListProps {
@@ -23,9 +23,9 @@ const UserList: React.FC<UserListProps> = ({ user, onLogout }) => {
     // 这里应该有一个获取所有用户的API端点
     // 暂时使用模拟数据
     const mockUsers = [
-      { id: 1, username: 'user1', email: 'user1@example.com', created_at: new Date().toISOString(), is_active: 1 },
-      { id: 2, username: 'user2', email: 'user2@example.com', created_at: new Date().toISOString(), is_active: 1 },
-      { id: 3, username: 'user3', email: 'user3@example.com', created_at: new Date().toISOString(), is_active: 1 },
+      { id: 1, username: 'user1', email: 'user1@example.com', created_at: new Date().toISOString(), is_active: true },
+      { id: 2, username: 'user2', email: 'user2@example.com', created_at: new Date().toISOString(), is_active: true },
+      { id: 3, username: 'user3', email: 'user3@example.com', created_at: new Date().toISOString(), is_active: true },
     ];
     setUsers(mockUsers);
   }, []);
