@@ -16,6 +16,7 @@ class User(UserBase):
     id: int
     created_at: datetime
     is_active: bool
+    email_verified: bool
     
     class Config:
         from_attributes = True
@@ -26,3 +27,9 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     user_id: int | None = None
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordReset(BaseModel):
+    password: str

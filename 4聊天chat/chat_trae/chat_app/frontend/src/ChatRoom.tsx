@@ -90,6 +90,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
         setOnlineUsers(Array.isArray(data.users) ? data.users : []);
       } else if (data.type === 'message') {
         setMessages(prev => [
+          ...(Array.isArray(prev) ? prev : []),
           {
             id: data.id,
             sender_id: data.sender_id,
@@ -97,8 +98,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
             content: data.content,
             created_at: data.created_at,
             sender: null
-          },
-          ...(Array.isArray(prev) ? prev : [])
+          }
         ]);
       }
     };
@@ -249,6 +249,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
           <div className="header-buttons">
             <button onClick={() => setShowInvitations(!showInvitations)}>
               Invitations ({Array.isArray(invitations) ? invitations.filter(inv => inv.status === 'pending').length : 0})
+            </button>
+            <button onClick={() => window.location.href = '/profile'}>
+              Profile
             </button>
             <button onClick={onLogout}>Logout</button>
           </div>

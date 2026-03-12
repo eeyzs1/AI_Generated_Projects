@@ -4,6 +4,10 @@ import Login from './Login';
 import Register from './Register';
 import ChatRoom from './ChatRoom';
 import UserList from './UserList';
+import UserProfile from './UserProfile';
+import VerifyEmail from './VerifyEmail';
+import PasswordResetRequest from './PasswordResetRequest';
+import PasswordReset from './PasswordReset';
 
 interface User {
   id: number;
@@ -46,6 +50,10 @@ const App: React.FC = () => {
     setUser(null);
   };
   
+  const handleUserUpdate = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
+  
   return (
     <Router>
       <div className="app">
@@ -54,6 +62,10 @@ const App: React.FC = () => {
           <Route path="/register" element={token ? <Navigate to="/" /> : <Register />} />
           <Route path="/" element={token ? (user ? <ChatRoom user={user} onLogout={handleLogout} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
           <Route path="/users" element={token ? (user ? <UserList user={user} onLogout={handleLogout} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/profile" element={token ? (user ? <UserProfile user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/reset-password-request" element={token ? <Navigate to="/" /> : <PasswordResetRequest />} />
+          <Route path="/reset-password" element={token ? <Navigate to="/" /> : <PasswordReset />} />
         </Routes>
       </div>
     </Router>

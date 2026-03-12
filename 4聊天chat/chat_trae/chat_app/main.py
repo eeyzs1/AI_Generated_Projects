@@ -4,17 +4,23 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import List
 import json
+import os
+from dotenv import load_dotenv
+
+# 加载.env文件
+load_dotenv()
 
 from database import get_db, engine, Base
 from models.user import User
 from models.room import Room
 from models.message import Message
-from schemas.user import UserCreate, User as UserSchema, Token, UserLogin
+from schemas.user import UserCreate, User as UserSchema, Token, UserLogin, PasswordResetRequest, PasswordReset
 from schemas.room import RoomCreate, Room as RoomSchema, RoomInvitationCreate, RoomInvitation, RoomInvitationResponse, InvitationAction
 from schemas.message import MessageCreate, Message as MessageSchema
 from services.auth_service import (
     get_password_hash, authenticate_user, create_access_token, 
-    verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
+    verify_token, ACCESS_TOKEN_EXPIRE_MINUTES, send_verification_email, 
+    send_password_reset_email, get_user_by_verification_token, get_user_by_email, get_user_by_reset_token
 )
 from services.chat_service import (
     create_room, get_user_rooms, get_room, add_user_to_room,
@@ -58,7 +64,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     return user
 
 # 用户注册
-@app.post("/register", response_model=UserSchema)
+@app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
     # 检查用户名是否已存在
     db_user = db.query(User).filter(User.username == user.username).first()
@@ -79,12 +85,87 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db_user = User(
         username=user.username,
         email=user.email,
-        password_hash=hashed_password
+        password_hash=hashed_password,
+        email_verified=False
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return db_user
+    
+    # 发送验证邮件
+    send_verification_email(db_user)
+    db.commit()
+    
+    return {"message": "Registration successful. Please check your email to verify your account."}
+
+# 邮箱验证
+@app.get("/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = get_user_by_verification_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired token"
+        )
+    
+    if user.verification_expiry < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token has expired"
+        )
+    
+    user.email_verified = True
+    user.verification_token = None
+    user.verification_expiry = None
+    db.commit()
+    
+    return {"message": "Email verified successfully. You can now login."}
+
+# 密码重置请求
+@app.post("/reset-password-request")
+def reset_password_request(request: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, request.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Email not found"
+        )
+    
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please verify your email first"
+        )
+    
+    # 发送密码重置邮件
+    send_password_reset_email(user)
+    db.commit()
+    
+    return {"message": "Password reset email sent. Please check your inbox."}
+
+# 密码重置
+@app.post("/reset-password")
+def reset_password(token: str, password: PasswordReset, db: Session = Depends(get_db)):
+    user = get_user_by_reset_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired token"
+        )
+    
+    if user.reset_expiry < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token has expired"
+        )
+    
+    # 更新密码
+    user.password_hash = get_password_hash(password.password)
+    user.reset_token = None
+    user.reset_expiry = None
+    db.commit()
+    
+    return {"message": "Password reset successful. You can now login with your new password."}
 
 # 用户登录
 @app.post("/login", response_model=Token)
@@ -106,6 +187,34 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 # 获取当前用户信息
 @app.get("/users/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+# 更新用户信息
+@app.put("/users/me", response_model=UserSchema)
+def update_user_me(user_update: UserCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 检查用户名是否已被其他用户使用
+    if user_update.username != current_user.username:
+        db_user = db.query(User).filter(User.username == user_update.username).first()
+        if db_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+    # 检查邮箱是否已被其他用户使用
+    if user_update.email != current_user.email:
+        db_user = db.query(User).filter(User.email == user_update.email).first()
+        if db_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+    # 更新用户信息
+    current_user.username = user_update.username
+    current_user.email = user_update.email
+    if user_update.password:
+        current_user.password_hash = get_password_hash(user_update.password)
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 # 根据username获取用户信息

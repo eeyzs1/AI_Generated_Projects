@@ -57,6 +57,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <a href="/reset-password-request" className="forgot-password">Forgot Password?</a>
         </div>
         <button type="submit">Login</button>
       </form>
