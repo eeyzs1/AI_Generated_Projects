@@ -210,7 +210,7 @@ coverage/
 .nyc_output/
 
 # AI / Model related (optional, if you don't want to commit models)
-models/
+ai_models/
 *.bin
 *.pth
 *.onnx
