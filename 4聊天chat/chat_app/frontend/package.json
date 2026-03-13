@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.3",
     "react-scripts": "^5.0.1",
-    "typescript": "^5.3.0"
+    "typescript": "^5.9.3"
   },
+  "proxy": "http://localhost:8000",
   "scripts": {
     "start": "react-scripts start --eslint-disable",
     "build": "react-scripts build",

@@ -1,52 +1,63 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import './AvatarStyles.css';
+import AvatarUploader from './AvatarUploader';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
+  const [displayname, setDisplayname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [avatar, setAvatar] = useState<string>('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
-  const handleSubmit = (e: React.FormEvent) => {
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    fetch('http://localhost:8000/register', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ username, email, password })
-    })
-    .then(response => {
-      if (!response.ok) {
+    try {
+      let avatarUrl = avatar;
+      
+      // 注册用户
+      const registerResponse = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          displayname,
+          email,
+          password,
+          avatar: avatarUrl,
+        }),
+      });
+      
+      if (!registerResponse.ok) {
         throw new Error('Registration failed');
       }
-      return response.json();
-    })
-    .then(() => {
-      setSuccess('Registration successful! Please login.');
-      setUsername('');
-      setEmail('');
-      setPassword('');
+      
+      const registerData = await registerResponse.json();
+      console.log('Registration successful:', registerData);
+      
+      setSuccess('Registration successful!');
       setError('');
-      // 注册成功后跳转到登录页面
+      
+      // 延迟导航到登录页面
       setTimeout(() => {
         navigate('/login');
-      }, 1000);
-    })
-    .catch(err => {
-      setError('Registration failed. Username or email may already exist.');
+      }, 1500);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('Registration failed. Please try again.');
       setSuccess('');
-    });
+    }
   };
-  
+
   return (
     <div className="register-container">
       <h2>Register</h2>
-      {error && <div className="error-message">{error}</div>}
-      {success && <div className="success-message">{success}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="username">Username</label>
@@ -55,6 +66,16 @@ const Register: React.FC = () => {
             id="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="displayname">Display Name</label>
+          <input
+            type="text"
+            id="displayname"
+            value={displayname}
+            onChange={(e) => setDisplayname(e.target.value)}
             required
           />
         </div>
@@ -78,8 +99,20 @@ const Register: React.FC = () => {
             required
           />
         </div>
+        <div className="form-group">
+          <label>Avatar</label>
+          <div className="avatar-section">
+            <AvatarUploader 
+              onAvatarSelected={(selectedAvatar) => setAvatar(selectedAvatar)}
+              onRemoveAvatar={() => setAvatar('')}
+              defaultAvatar={avatar}
+            />
+          </div>
+        </div>
         <button type="submit">Register</button>
       </form>
+      {error && <p className="error-message">{error}</p>}
+      {success && <p className="success-message">{success}</p>}
       <p>Already have an account? <a href="/login">Login</a></p>
     </div>
   );

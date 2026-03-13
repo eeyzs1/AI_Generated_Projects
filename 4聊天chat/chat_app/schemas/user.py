@@ -3,10 +3,12 @@ from datetime import datetime
 
 class UserBase(BaseModel):
     username: str
+    displayname: str
     email: EmailStr
 
 class UserCreate(UserBase):
     password: str
+    avatar: str | None = None
 
 class UserLogin(BaseModel):
     username: str
@@ -14,6 +16,7 @@ class UserLogin(BaseModel):
 
 class User(UserBase):
     id: int
+    avatar: str | None
     created_at: datetime
     is_active: bool
     email_verified: bool

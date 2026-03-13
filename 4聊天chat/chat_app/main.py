@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from datetime import timedelta
-from typing import List
+from datetime import timedelta, datetime
+from typing import List, Optional
 import json
 import os
+import uuid
 from dotenv import load_dotenv
 
 # 加载.env文件
@@ -63,6 +65,13 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         raise credentials_exception
     return user
 
+# 确保头像目录存在
+if not os.path.exists("static/avatars"):
+    os.makedirs("static/avatars")
+
+# 配置静态文件服务
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # 用户注册
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -84,8 +93,10 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     hashed_password = get_password_hash(user.password)
     db_user = User(
         username=user.username,
+        displayname=user.displayname,
         email=user.email,
         password_hash=hashed_password,
+        avatar=user.avatar,
         email_verified=False
     )
     db.add(db_user)
@@ -189,6 +200,56 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+# 上传头像（用于注册时，不需要认证，但添加简单的限制）
+@app.post("/upload-avatar/register")
+async def upload_avatar_register(file: UploadFile = File(...)):
+    # 验证文件类型
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are allowed"
+        )
+    # 验证文件大小
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:  # 2MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size must be less than 2MB"
+        )
+    # 生成唯一文件名
+    filename = f"{uuid.uuid4()}_{file.filename}"
+    file_path = os.path.join("static/avatars", filename)
+    # 保存文件
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    # 返回文件路径
+    return {"avatar_url": f"/static/avatars/{filename}"}
+
+# 上传头像（用于已登录用户，需要认证）
+@app.post("/upload-avatar")
+async def upload_avatar(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    # 验证文件类型
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are allowed"
+        )
+    # 验证文件大小
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:  # 2MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size must be less than 2MB"
+        )
+    # 生成唯一文件名
+    filename = f"{uuid.uuid4()}_{file.filename}"
+    file_path = os.path.join("static/avatars", filename)
+    # 保存文件
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    # 返回文件路径
+    return {"avatar_url": f"/static/avatars/{filename}"}
+
 # 更新用户信息
 @app.put("/users/me", response_model=UserSchema)
 def update_user_me(user_update: UserCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -210,7 +271,10 @@ def update_user_me(user_update: UserCreate, current_user: User = Depends(get_cur
             )
     # 更新用户信息
     current_user.username = user_update.username
+    current_user.displayname = user_update.displayname
     current_user.email = user_update.email
+    if user_update.avatar:
+        current_user.avatar = user_update.avatar
     if user_update.password:
         current_user.password_hash = get_password_hash(user_update.password)
     db.commit()
@@ -320,8 +384,20 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
     try:
         # 广播用户上线
         online_users = manager.get_online_users()
+        # 获取在线用户的详细信息
+        db = next(get_db())
+        online_users_with_info = []
+        for user_id in online_users:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                online_users_with_info.append({
+                    "id": user.id,
+                    "username": user.username,
+                    "displayname": user.displayname,
+                    "avatar": user.avatar
+                })
         await manager.broadcast_to_room(
-            json.dumps({"type": "online_users", "users": online_users}),
+            json.dumps({"type": "online_users", "users": online_users_with_info}),
             0  # 全局房间
         )
         
@@ -347,12 +423,21 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
                 db_message = send_message(db, message, user_id)
                 
                 if db_message:
+                    # 获取发送者信息
+                    sender = db.query(User).filter(User.id == user_id).first()
+                    sender_info = {
+                        "id": sender.id,
+                        "username": sender.username,
+                        "displayname": sender.displayname,
+                        "avatar": sender.avatar
+                    }
                     # 广播消息到房间
                     await manager.broadcast_to_room(
                         json.dumps({
                             "type": "message",
                             "id": db_message.id,
                             "sender_id": user_id,
+                            "sender": sender_info,
                             "room_id": room_id,
                             "content": content,
                             "created_at": db_message.created_at.isoformat()
@@ -363,8 +448,20 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         manager.disconnect(user_id)
         # 广播用户下线
         online_users = manager.get_online_users()
+        # 获取在线用户的详细信息
+        db = next(get_db())
+        online_users_with_info = []
+        for user_id in online_users:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                online_users_with_info.append({
+                    "id": user.id,
+                    "username": user.username,
+                    "displayname": user.displayname,
+                    "avatar": user.avatar
+                })
         await manager.broadcast_to_room(
-            json.dumps({"type": "online_users", "users": online_users}),
+            json.dumps({"type": "online_users", "users": online_users_with_info}),
             0  # 全局房间
         )
 

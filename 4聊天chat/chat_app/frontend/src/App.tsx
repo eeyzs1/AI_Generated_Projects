@@ -12,7 +12,9 @@ import PasswordReset from './PasswordReset';
 interface User {
   id: number;
   username: string;
+  displayname: string;
   email: string;
+  avatar: string | null;
   created_at: string;
   is_active: boolean;
 }

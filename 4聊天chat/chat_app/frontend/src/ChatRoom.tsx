@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import './AvatarStyles.css';
 
 interface User {
   id: number;
   username: string;
+  displayname: string;
   email: string;
+  avatar: string | null;
   created_at: string;
   is_active: boolean;
 }
@@ -47,7 +50,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
   const [newMessage, setNewMessage] = useState('');
   const [newRoomName, setNewRoomName] = useState('');
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<number[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<{id: number, username: string, displayname: string, avatar: string | null}[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [inviteeUsername, setInviteeUsername] = useState('');
   const [showInvitations, setShowInvitations] = useState(false);
@@ -97,7 +100,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
             room_id: data.room_id,
             content: data.content,
             created_at: data.created_at,
-            sender: null
+            sender: data.sender || null
           }
         ]);
       }
@@ -310,11 +313,21 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
           <h3>Online Users</h3>
           <div className="user-list">
             {onlineUsers.length > 0 ? (
-              onlineUsers.map(userId => (
-                <div key={userId} className="user-item">
-                  User {userId}
-                </div>
-              ))
+              onlineUsers.map(user => {
+                return (
+                  <div key={user.id} className="user-item">
+                    <div className="user-avatar">
+                      <img 
+                        src={user.avatar || '/static/avatars/default1.png'} 
+                        alt="User avatar" 
+                      />
+                    </div>
+                    <div className="user-name">
+                      {user.displayname || user.username || `User ${user.id}`}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <p>No online users</p>
             )}
@@ -339,9 +352,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
                 </div>
                 <div className="room-members">
                   {(selectedRoom.members && Array.isArray(selectedRoom.members)) ? selectedRoom.members.map(member => (
-                    <span key={member.id} className="member">
-                      {member.username}
-                    </span>
+                    <div key={member.id} className="member">
+                      <div className="member-avatar">
+                        <img 
+                          src={member.avatar || '/static/avatars/default1.png'} 
+                          alt="Member avatar" 
+                        />
+                      </div>
+                      <span className="member-name">
+                        {member.displayname || member.username}
+                      </span>
+                    </div>
                   )) : null}
                 </div>
               </div>
@@ -353,8 +374,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
                   key={message.id}
                   className={`message ${message.sender_id === user.id ? 'own' : ''}`}
                 >
-                  <div className="message-sender">
-                    {message.sender?.username || `User ${message.sender_id}`}
+                  <div className="message-header">
+                    <div className="message-avatar">
+                      <img 
+                        src={message.sender?.avatar || '/static/avatars/default1.png'} 
+                        alt="User avatar" 
+                      />
+                    </div>
+                    <div className="message-sender">
+                      {message.sender?.displayname || message.sender?.username || `User ${message.sender_id}`}
+                    </div>
                   </div>
                   <div className="message-content">{message.content}</div>
                   <div className="message-time">

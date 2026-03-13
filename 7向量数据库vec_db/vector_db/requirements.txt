@@ -1,0 +1,45 @@
+# 基础依赖
+python-dotenv
+FastAPI
+uvicorn
+
+# 文本处理
+pdfplumber
+python-docx
+
+# 图像处理
+Pillow
+opencv-python
+
+# 视频处理
+moviepy
+
+# 向量嵌入
+sentence-transformers
+
+# 向量存储
+faiss-cpu
+# faiss-gpu
+hnswlib
+annoy
+
+
+# 元数据存储
+pymysql
+redis
+pymongo
+
+# S3存储
+boto3
+
+# API认证
+pyjwt
+
+# 测试
+pytest
+
+# 容器化
+docker
+
+# 测试
+locust
