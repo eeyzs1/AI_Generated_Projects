@@ -1,8 +1,17 @@
 import os
+from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-# 确保头像目录存在
-avatar_dir = 'static/avatars'
+# 加载.env文件
+load_dotenv()
+
+# 静态文件路径配置
+STATIC_PATH = os.getenv("STATIC_PATH", "static")
+# 头像上传目录
+AVATAR_UPLOAD_DIR = os.path.join(STATIC_PATH, "avatars")
+
+# 确保默认头像目录存在
+avatar_dir = os.path.join(AVATAR_UPLOAD_DIR, 'default')
 if not os.path.exists(avatar_dir):
     os.makedirs(avatar_dir)
 

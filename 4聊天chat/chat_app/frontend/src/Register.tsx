@@ -16,30 +16,42 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 检查是否已选择头像
+    if (!avatar) {
+      setError('Please select an avatar before registering.');
+      return;
+    }
+    
     try {
-      let avatarUrl = avatar;
+      const registerData = {
+        username,
+        displayname,
+        email,
+        password,
+        avatar: avatar,
+      };
+      
+      console.log('Sending registration data:', registerData);
       
       // 注册用户
-      const registerResponse = await fetch('/api/register', {
+      const registerResponse = await fetch('/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username,
-          displayname,
-          email,
-          password,
-          avatar: avatarUrl,
-        }),
+        body: JSON.stringify(registerData),
       });
       
+      console.log('Response status:', registerResponse.status);
+      
       if (!registerResponse.ok) {
-        throw new Error('Registration failed');
+        const errorData = await registerResponse.json();
+        console.error('Error data:', errorData);
+        throw new Error(errorData.detail || 'Registration failed');
       }
       
-      const registerData = await registerResponse.json();
-      console.log('Registration successful:', registerData);
+      const responseData = await registerResponse.json();
+      console.log('Registration successful:', responseData);
       
       setSuccess('Registration successful!');
       setError('');
@@ -50,7 +62,8 @@ const Register: React.FC = () => {
       }, 1500);
     } catch (err) {
       console.error('Registration error:', err);
-      setError('Registration failed. Please try again.');
+      // 显示后端传来的具体错误信息
+      setError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
       setSuccess('');
     }
   };

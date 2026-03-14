@@ -37,9 +37,12 @@ pyjwt
 
 # 测试
 pytest
+pytest-timeout
+
+# 测试
+locust
 
 # 容器化
 docker
 
-# 测试
-locust
+

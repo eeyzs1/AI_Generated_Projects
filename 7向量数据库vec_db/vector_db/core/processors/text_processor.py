@@ -1,14 +1,22 @@
 from typing import List, Any
 from .base_processor import BaseProcessor
 from config.config import config
+from core.model_manager import model_manager
 
 class TextProcessor(BaseProcessor):
-    def __init__(self, model_name=None):
-        # 使用配置中的模型名称，如果没有提供
-        if model_name is None:
-            model_name = config.get('TEXT_PROCESSING_MODEL_NAME', 'shibing624/text2vec-base-chinese')
-        self.model_name = model_name
-        # 模拟模型，避免网络依赖
+    def __init__(self, model_type=None, model_name=None, api_key=None, model_path=None):
+        # 使用配置中的参数，如果没有提供
+        self.model_type = model_type or config.get('TEXT_PROCESSING_MODEL_TYPE', 'local')
+        self.model_name = model_name or config.get('TEXT_PROCESSING_MODEL_NAME', 'shibing624/text2vec-base-chinese')
+        self.api_key = api_key or config.get('TEXT_PROCESSING_API_KEY', '')
+        self.model_path = model_path or config.get('EMBEDDING_MODEL_PATH', './models/embedding')
+        
+        # 确保模型可用，但即使失败也继续运行
+        if self.model_type == 'local':
+            try:
+                model_manager.ensure_model_available(self.model_name, 'text')
+            except Exception as e:
+                print(f"模型下载失败: {e}")
     
     def chunk(self, content: str) -> List[str]:
         # 简单的文本分块实现

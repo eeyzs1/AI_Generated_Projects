@@ -24,8 +24,16 @@ const VerifyEmail: React.FC = () => {
       const data = await response.json();
       if (response.ok) {
         setMessage(data.message);
+        setError('');
       } else {
-        setError(data.detail || 'Verification failed');
+        // 检查是否是因为 token 已经被使用过
+        if (data.detail === 'Invalid or expired token') {
+          // 不显示错误，因为用户可能已经验证过了
+          setMessage('Email already verified. You can now login.');
+          setError('');
+        } else {
+          setError(data.detail || 'Verification failed');
+        }
       }
     } catch (err) {
       setError('An error occurred during verification');

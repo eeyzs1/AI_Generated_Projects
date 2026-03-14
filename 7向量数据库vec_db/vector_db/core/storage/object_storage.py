@@ -1,7 +1,6 @@
 import os
 import boto3
-import uuid
-from typing import bytes
+from typing import Optional
 from .file_storage import FileStorageInterface
 
 class ObjectStorage(FileStorageInterface):

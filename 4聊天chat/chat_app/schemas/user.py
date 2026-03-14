@@ -10,6 +10,10 @@ class UserCreate(UserBase):
     password: str
     avatar: str | None = None
 
+class UserUpdate(UserBase):
+    password: str | None = None
+    avatar: str | None = None
+
 class UserLogin(BaseModel):
     username: str
     password: str
@@ -26,6 +30,7 @@ class User(UserBase):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
 
 class TokenData(BaseModel):

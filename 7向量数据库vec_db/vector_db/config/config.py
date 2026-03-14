@@ -7,7 +7,7 @@ class ConfigManager:
         self.config = self._load_config()
     
     def _load_config(self):
-        load_dotenv(self.env_file)
+        load_dotenv(self.env_file, override=True)
         config = {}
         
         # 文本处理模型配置
@@ -87,6 +87,70 @@ class ConfigManager:
     
     def get_all(self):
         return self.config
+    
+    def validate_config(self):
+        """验证配置的有效性"""
+        validation_errors = []
+        
+        # 验证向量数据库配置
+        vector_db_type = self.get('VECTOR_DB_TYPE')
+        if vector_db_type not in ['faiss', 'hnsw', 'annoy']:
+            validation_errors.append(f"无效的向量数据库类型: {vector_db_type}")
+        
+        # 验证元数据存储配置
+        metadata_storage_type = self.get('METADATA_STORAGE_TYPE')
+        if metadata_storage_type not in ['mysql', 'redis', 'mongodb', 'memory']:
+            validation_errors.append(f"无效的元数据存储类型: {metadata_storage_type}")
+        
+        # 验证文件存储配置
+        file_storage_type = self.get('FILE_STORAGE_TYPE')
+        if file_storage_type not in ['local', 's3', 'database']:
+            validation_errors.append(f"无效的文件存储类型: {file_storage_type}")
+        
+        # 验证模型类型配置
+        embedding_model_type = self.get('EMBEDDING_MODEL_TYPE')
+        if embedding_model_type not in ['local', 'remote']:
+            validation_errors.append(f"无效的嵌入模型类型: {embedding_model_type}")
+        
+        # 验证路径配置
+        vector_db_path = self.get('VECTOR_DB_PATH')
+        if not vector_db_path:
+            validation_errors.append("向量数据库路径未配置")
+        
+        local_storage_path = self.get('LOCAL_STORAGE_PATH')
+        if not local_storage_path:
+            validation_errors.append("本地存储路径未配置")
+        
+        # 验证API配置
+        api_secret_key = self.get('API_SECRET_KEY')
+        if api_secret_key == 'your-api-secret-key':
+            validation_errors.append("API密钥未设置，请修改配置")
+        
+        return validation_errors
+    
+    def apply_model_config(self, model_type: str) -> dict:
+        """根据模型类型获取应用的模型配置"""
+        if model_type == 'text':
+            return {
+                'model_type': self.get('TEXT_PROCESSING_MODEL_TYPE'),
+                'model_name': self.get('TEXT_PROCESSING_MODEL_NAME'),
+                'api_key': self.get('TEXT_PROCESSING_API_KEY'),
+                'model_path': self.get('EMBEDDING_MODEL_PATH')
+            }
+        elif model_type == 'image':
+            return {
+                'model_type': self.get('IMAGE_PROCESSING_MODEL_TYPE'),
+                'model_name': self.get('IMAGE_PROCESSING_MODEL_NAME'),
+                'model_path': self.get('IMAGE_PROCESSING_MODEL_PATH')
+            }
+        elif model_type == 'embedding':
+            return {
+                'model_type': self.get('EMBEDDING_MODEL_TYPE'),
+                'model_name': self.get('EMBEDDING_MODEL_NAME'),
+                'model_path': self.get('EMBEDDING_MODEL_PATH'),
+                'api_key': self.get('EMBEDDING_API_KEY')
+            }
+        return {}
 
 # 全局配置实例
 config = ConfigManager()

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './AvatarStyles.css';
 
 interface User {
@@ -41,9 +42,11 @@ interface Invitation {
 interface ChatRoomProps {
   user: User;
   onLogout: () => void;
+  authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
+const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch }) => {
+  const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -58,62 +61,93 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
   
   // 加载聊天室列表
   useEffect(() => {
-    fetch('http://localhost:8000/rooms', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
+    authenticatedFetch('http://localhost:8000/rooms')
     .then(response => response.json())
     .then(data => setRooms(Array.isArray(data) ? data : []));
-  }, []);
+  }, [authenticatedFetch]);
   
   // 加载邀请列表
   useEffect(() => {
-    fetch('http://localhost:8000/invitations', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
+    authenticatedFetch('http://localhost:8000/invitations')
     .then(response => response.json())
     .then(data => setInvitations(Array.isArray(data) ? data : []));
-  }, []);
+  }, [authenticatedFetch]);
   
   // 初始化WebSocket连接
   useEffect(() => {
-    const socket = new WebSocket(`ws://localhost:8000/ws/${user.id}`);
+    let socket: WebSocket | null = null;
+    let isMounted = true;
+    let isConnected = false;
     
-    socket.onopen = () => {
-      console.log('WebSocket connected');
-    };
-    
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    try {
+      socket = new WebSocket(`ws://localhost:8000/ws/${user.id}`);
       
-      if (data.type === 'online_users') {
-        setOnlineUsers(Array.isArray(data.users) ? data.users : []);
-      } else if (data.type === 'message') {
-        setMessages(prev => [
-          ...(Array.isArray(prev) ? prev : []),
-          {
-            id: data.id,
-            sender_id: data.sender_id,
-            room_id: data.room_id,
-            content: data.content,
-            created_at: data.created_at,
-            sender: data.sender || null
+      socket.onopen = () => {
+        if (isMounted) {
+          isConnected = true;
+          console.log('WebSocket connected');
+        }
+      };
+      
+      socket.onmessage = (event) => {
+        if (!isMounted) return;
+        
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'online_users') {
+            setOnlineUsers(Array.isArray(data.users) ? data.users : []);
+          } else if (data.type === 'message') {
+            setMessages(prev => [
+              ...(Array.isArray(prev) ? prev : []),
+              {
+                id: data.id,
+                sender_id: data.sender_id,
+                room_id: data.room_id,
+                content: data.content,
+                created_at: data.created_at,
+                sender: data.sender || null
+              }
+            ]);
           }
-        ]);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      socket.onclose = () => {
+        if (isMounted) {
+          isConnected = false;
+          console.log('WebSocket disconnected');
+        }
+      };
+      
+      socket.onerror = (error) => {
+        if (isMounted) {
+          console.error('WebSocket error:', error);
+        }
+      };
+      
+      if (isMounted) {
+        setWs(socket);
       }
-    };
-    
-    socket.onclose = () => {
-      console.log('WebSocket disconnected');
-    };
-    
-    setWs(socket);
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+    }
     
     return () => {
-      socket.close();
+      isMounted = false;
+      if (socket) {
+        try {
+          // 只有在连接建立后才关闭，避免出现"closed before connection established"错误
+          if (isConnected || socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close();
+          }
+        } catch (error) {
+          // 捕获关闭时可能出现的错误
+          console.log('WebSocket close error (ignored):', error);
+        }
+      }
     };
   }, [user.id]);
   
@@ -127,11 +161,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
     setSelectedRoom(room);
     
     // 加载聊天室消息
-    fetch(`http://localhost:8000/rooms/${room.id}/messages`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
+    authenticatedFetch(`http://localhost:8000/rooms/${room.id}/messages`)
     .then(response => response.json())
     .then(data => setMessages(Array.isArray(data) ? data : []));
     
@@ -148,11 +178,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
   const handleCreateRoom = () => {
     if (!newRoomName) return;
     
-    fetch('http://localhost:8000/rooms', {
+    authenticatedFetch('http://localhost:8000/rooms', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ name: newRoomName })
     })
@@ -181,11 +210,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
     if (!inviteeUsername || !selectedRoom) return;
     
     // 首先根据username获取userId
-    fetch(`http://localhost:8000/users/${inviteeUsername}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
+    authenticatedFetch(`http://localhost:8000/users/${inviteeUsername}`)
     .then(response => {
       if (!response.ok) {
         throw new Error('User not found');
@@ -194,11 +219,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
     })
     .then(user => {
       // 然后发送邀请
-      return fetch('http://localhost:8000/invitations', {
+      return authenticatedFetch('http://localhost:8000/invitations', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           room_id: selectedRoom.id,
@@ -219,11 +243,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
   
   // 处理邀请
   const handleInvitationAction = (invitationId: number, action: string) => {
-    fetch(`http://localhost:8000/invitations/${invitationId}/action`, {
+    authenticatedFetch(`http://localhost:8000/invitations/${invitationId}/action`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ action })
     })
@@ -233,11 +256,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
       setInvitations(prev => (Array.isArray(prev) ? prev : []).filter(inv => inv.id !== invitationId));
       // 如果接受邀请，重新加载聊天室列表
       if (action === 'accepted') {
-        fetch('http://localhost:8000/rooms', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        })
+        authenticatedFetch('http://localhost:8000/rooms')
         .then(response => response.json())
         .then(data => setRooms(Array.isArray(data) ? data : []));
       }
@@ -253,7 +272,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
             <button onClick={() => setShowInvitations(!showInvitations)}>
               Invitations ({Array.isArray(invitations) ? invitations.filter(inv => inv.status === 'pending').length : 0})
             </button>
-            <button onClick={() => window.location.href = '/profile'}>
+            <button onClick={() => navigate('/profile')}>
               Profile
             </button>
             <button onClick={onLogout}>Logout</button>
@@ -318,7 +337,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
                   <div key={user.id} className="user-item">
                     <div className="user-avatar">
                       <img 
-                        src={user.avatar || '/static/avatars/default1.png'} 
+                        src={user.avatar || '/static/avatars/default/default1.png'} 
                         alt="User avatar" 
                       />
                     </div>
@@ -355,7 +374,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
                     <div key={member.id} className="member">
                       <div className="member-avatar">
                         <img 
-                          src={member.avatar || '/static/avatars/default1.png'} 
+                          src={member.avatar || '/static/avatars/default/default1.png'} 
                           alt="Member avatar" 
                         />
                       </div>
@@ -377,7 +396,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout }) => {
                   <div className="message-header">
                     <div className="message-avatar">
                       <img 
-                        src={message.sender?.avatar || '/static/avatars/default1.png'} 
+                        src={message.sender?.avatar || '/static/avatars/default/default1.png'} 
                         alt="User avatar" 
                       />
                     </div>

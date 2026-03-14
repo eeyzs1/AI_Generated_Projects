@@ -22,11 +22,11 @@ const AvatarUploader: React.FC<AvatarUploaderProps> = ({ onAvatarSelected, onRem
   
   // 默认头像列表
   const defaultAvatars = [
-    '/static/avatars/default1.png',
-    '/static/avatars/default2.png',
-    '/static/avatars/default3.png',
-    '/static/avatars/default4.png',
-    '/static/avatars/default5.png'
+    '/static/avatars/default/default1.png',
+    '/static/avatars/default/default2.png',
+    '/static/avatars/default/default3.png',
+    '/static/avatars/default/default4.png',
+    '/static/avatars/default/default5.png'
   ];
   
   // 处理默认头像选择
@@ -296,7 +296,7 @@ const AvatarUploader: React.FC<AvatarUploaderProps> = ({ onAvatarSelected, onRem
   };
   
   // 处理裁剪和上传
-  const handleCropAndUpload = () => {
+  const handleCropAndUpload = async () => {
     if (!fileInputRef.current?.files?.[0]) return;
     
     const file = fileInputRef.current.files[0];
@@ -314,45 +314,52 @@ const AvatarUploader: React.FC<AvatarUploaderProps> = ({ onAvatarSelected, onRem
       
       // 加载图片并进行裁剪
       const img = new Image();
-      img.onload = () => {
-        // 获取选择框的位置和大小
-        const { x, y, size } = cropBox;
-        
-        // 绘制圆形裁剪路径
-        ctx.beginPath();
-        ctx.arc(40, 40, 40, 0, 2 * Math.PI);
-        ctx.clip();
-        
-        // 计算预览窗口到原始图像的缩放比例
-        const scaleX = img.width / previewSize.width;
-        const scaleY = img.height / previewSize.height;
-        
-        // 绘制裁剪后的图片，确保缩放到80x80大小
-        ctx.drawImage(
-          img,
-          x * scaleX, // 转换为原始图像的x坐标
-          y * scaleY, // 转换为原始图像的y坐标
-          size * scaleX, // 转换为原始图像的宽度
-          size * scaleY, // 转换为原始图像的高度
-          0, // 目标x坐标
-          0, // 目标y坐标
-          80, // 目标宽度
-          80 // 目标高度
-        );
-        
-        // 将canvas转换为base64
-        const compressedImageDataUrl = cropCanvas.toDataURL('image/jpeg', 0.7);
-        
-        // 调用回调函数，返回裁剪后的头像
-        onAvatarSelected(compressedImageDataUrl);
-        
-        // 重置状态
-        setIsCropping(false);
-        setPreviewImage('');
-        setCropBox({ x: 0, y: 0, size: 200 });
-        setPreviewSize({ width: 400, height: 300 });
-      };
+      
+      // 使用Promise处理图片加载
+      const imageLoaded = new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
+      });
+      
       img.src = URL.createObjectURL(file);
+      await imageLoaded;
+      
+      // 获取选择框的位置和大小
+      const { x, y, size } = cropBox;
+      
+      // 绘制圆形裁剪路径
+      ctx.beginPath();
+      ctx.arc(40, 40, 40, 0, 2 * Math.PI);
+      ctx.clip();
+      
+      // 计算预览窗口到原始图像的缩放比例
+      const scaleX = img.width / previewSize.width;
+      const scaleY = img.height / previewSize.height;
+      
+      // 绘制裁剪后的图片，确保缩放到80x80大小
+      ctx.drawImage(
+        img,
+        x * scaleX, // 转换为原始图像的x坐标
+        y * scaleY, // 转换为原始图像的y坐标
+        size * scaleX, // 转换为原始图像的宽度
+        size * scaleY, // 转换为原始图像的高度
+        0, // 目标x坐标
+        0, // 目标y坐标
+        80, // 目标宽度
+        80 // 目标高度
+      );
+      
+      // 将canvas转换为base64
+      const compressedImageDataUrl = cropCanvas.toDataURL('image/jpeg', 0.7);
+      
+      // 调用回调函数，返回裁剪后的头像base64
+      onAvatarSelected(compressedImageDataUrl);
+      
+      // 重置状态
+      setIsCropping(false);
+      setPreviewImage('');
+      setCropBox({ x: 0, y: 0, size: 200 });
+      setPreviewSize({ width: 400, height: 300 });
     } catch (err) {
       console.error('Avatar crop error:', err);
       // 重置状态

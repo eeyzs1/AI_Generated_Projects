@@ -11,9 +11,10 @@ interface User {
 interface UserListProps {
   user: User;
   onLogout: () => void;
+  authenticatedFetch: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-const UserList: React.FC<UserListProps> = ({ user, onLogout }) => {
+const UserList: React.FC<UserListProps> = ({ user, onLogout, authenticatedFetch }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
   const [inviteUserId, setInviteUserId] = useState<number | null>(null);
@@ -34,11 +35,8 @@ const UserList: React.FC<UserListProps> = ({ user, onLogout }) => {
   const handleInvite = () => {
     if (!selectedRoom || !inviteUserId) return;
     
-    fetch(`http://localhost:8000/rooms/${selectedRoom}/add/${inviteUserId}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
+    authenticatedFetch(`http://localhost:8000/rooms/${selectedRoom}/add/${inviteUserId}`, {
+      method: 'POST'
     })
     .then(response => {
       if (response.ok) {

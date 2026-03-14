@@ -2,16 +2,26 @@ from typing import List, Any
 from PIL import Image
 from .base_processor import BaseProcessor
 from config.config import config
+from core.model_manager import model_manager
 from sentence_transformers import SentenceTransformer
 
 class ImageProcessor(BaseProcessor):
-    def __init__(self, model_name=None):
-        # 使用配置中的模型名称，如果没有提供
-        if model_name is None:
-            model_name = config.get('IMAGE_PROCESSING_MODEL_NAME', 'OFA-Sys/chinese-clip-vit-base-patch16')
-
-        self.model = SentenceTransformer(model_name)
-        self.use_real_model = True
+    def __init__(self, model_type=None, model_name=None, model_path=None):
+        # 使用配置中的参数，如果没有提供
+        self.model_type = model_type or config.get('IMAGE_PROCESSING_MODEL_TYPE', 'local')
+        self.model_name = model_name or config.get('IMAGE_PROCESSING_MODEL_NAME', 'OFA-Sys/chinese-clip-vit-base-patch16')
+        self.model_path = model_path or config.get('IMAGE_PROCESSING_MODEL_PATH', './models/image')
+        
+        # 确保模型可用
+        if self.model_type == 'local':
+            model_manager.ensure_model_available(self.model_name, 'image')
+        
+        try:
+            self.model = SentenceTransformer(self.model_name)
+            self.use_real_model = True
+        except Exception as e:
+            print(f"加载模型失败，使用模拟模型: {e}")
+            self.use_real_model = False
 
     
     def chunk(self, content: Image.Image) -> List[Image.Image]:

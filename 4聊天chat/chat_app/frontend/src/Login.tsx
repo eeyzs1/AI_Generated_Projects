@@ -21,7 +21,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     })
     .then(response => {
       if (!response.ok) {
-        throw new Error('Invalid credentials');
+        return response.json().then(errorData => {
+          throw new Error(errorData.detail || 'Invalid credentials');
+        });
       }
       return response.json();
     })
@@ -29,7 +31,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       onLogin(data.access_token);
     })
     .catch(err => {
-      setError('Invalid username or password');
+      setError(err.message);
     });
   };
   

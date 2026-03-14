@@ -12,17 +12,23 @@ from dotenv import load_dotenv
 # 加载.env文件
 load_dotenv()
 
+# 静态文件路径配置
+STATIC_PATH = os.getenv("STATIC_PATH", "static")
+# 头像上传目录
+AVATAR_UPLOAD_DIR = os.path.join(STATIC_PATH, "avatars")
+
 from database import get_db, engine, Base
 from models.user import User
 from models.room import Room
 from models.message import Message
-from schemas.user import UserCreate, User as UserSchema, Token, UserLogin, PasswordResetRequest, PasswordReset
+from schemas.user import UserCreate, UserUpdate, User as UserSchema, Token, UserLogin, PasswordResetRequest, PasswordReset
 from schemas.room import RoomCreate, Room as RoomSchema, RoomInvitationCreate, RoomInvitation, RoomInvitationResponse, InvitationAction
 from schemas.message import MessageCreate, Message as MessageSchema
 from services.auth_service import (
-    get_password_hash, authenticate_user, create_access_token, 
+    get_password_hash, authenticate_user, create_access_token, create_refresh_token,
     verify_token, ACCESS_TOKEN_EXPIRE_MINUTES, send_verification_email, 
-    send_password_reset_email, get_user_by_verification_token, get_user_by_email, get_user_by_reset_token
+    send_password_reset_email, get_user_by_verification_token, get_user_by_email, get_user_by_reset_token,
+    store_refresh_token, verify_refresh_token, revoke_refresh_token
 )
 from services.chat_service import (
     create_room, get_user_rooms, get_room, add_user_to_room,
@@ -59,25 +65,64 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     token = auth_header.split(" ")[1] if len(auth_header.split(" ")) > 1 else None
     if not token:
         raise credentials_exception
-    token_data = verify_token(token, credentials_exception)
+    # 只接受access token
+    token_data, _ = verify_token(token, credentials_exception, "access")
     user = db.query(User).filter(User.id == token_data.user_id).first()
     if user is None:
         raise credentials_exception
     return user
 
 # 确保头像目录存在
-if not os.path.exists("static/avatars"):
-    os.makedirs("static/avatars")
+if not os.path.exists(AVATAR_UPLOAD_DIR):
+    os.makedirs(AVATAR_UPLOAD_DIR)
 
 # 配置静态文件服务
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_PATH), name="static")
+
+# 辅助函数：保存base64头像
+def save_base64_avatar(base64_data: str) -> str:
+    import base64
+    import re
+    
+    # 提取base64数据
+    match = re.search(r'^data:image/(\w+);base64,(.*)$', base64_data)
+    if not match:
+        return "/static/avatars/default/default1.png"
+    
+    file_extension = match.group(1)
+    base64_content = match.group(2)
+    
+    # 解码base64数据
+    try:
+        image_data = base64.b64decode(base64_content)
+    except Exception as e:
+        print(f"Error decoding base64: {e}")
+        return "/static/avatars/default/default1.png"
+    
+    # 生成唯一文件名
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(AVATAR_UPLOAD_DIR, filename)
+    
+    # 保存文件
+    try:
+        with open(file_path, "wb") as f:
+            f.write(image_data)
+    except Exception as e:
+        print(f"Error saving avatar: {e}")
+        return "/static/avatars/default/default1.png"
+    
+    # 返回文件URL路径
+    return f"/static/avatars/{filename}"
 
 # 用户注册
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
+    print(f"Received registration request: {user}")
+    
     # 检查用户名是否已存在
     db_user = db.query(User).filter(User.username == user.username).first()
     if db_user:
+        print(f"Username {user.username} already registered")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
@@ -85,27 +130,47 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     # 检查邮箱是否已存在
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
+        print(f"Email {user.email} already registered")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
+    
+    # 处理头像
+    avatar_url = None
+    if user.avatar:
+        print(f"Processing avatar: {user.avatar}")
+        # 检查是否是base64格式
+        if user.avatar.startswith('data:image/'):
+            print("Processing base64 avatar")
+            avatar_url = save_base64_avatar(user.avatar)
+            print(f"Saved avatar URL: {avatar_url}")
+        else:
+            print("Using direct avatar URL")
+            avatar_url = user.avatar
+            print(f"Avatar URL: {avatar_url}")
+    
     # 创建新用户
+    print("Creating new user")
     hashed_password = get_password_hash(user.password)
     db_user = User(
         username=user.username,
         displayname=user.displayname,
         email=user.email,
         password_hash=hashed_password,
-        avatar=user.avatar,
+        avatar=avatar_url,
         email_verified=False
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    print(f"User created: {db_user.id}")
     
     # 发送验证邮件
+    print("Sending verification email")
     send_verification_email(db_user)
     db.commit()
+    print("Verification email sent")
     
     return {"message": "Registration successful. Please check your email to verify your account."}
 
@@ -180,50 +245,121 @@ def reset_password(token: str, password: PasswordReset, db: Session = Depends(ge
 
 # 用户登录
 @app.post("/login", response_model=Token)
-def login(user: UserLogin, db: Session = Depends(get_db)):
-    user = authenticate_user(db, user.username, user.password)
+def login(user: UserLogin, db: Session = Depends(get_db), response = None):
+    user, error = authenticate_user(db, user.username, user.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail=error,
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # 创建访问令牌
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id)},
         expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    # 创建刷新令牌
+    refresh_token, jti = create_refresh_token(data={"sub": str(user.id)})
+    
+    # 存储刷新令牌到数据库
+    refresh_token_expires = timedelta(days=7)
+    expires_at = datetime.utcnow() + refresh_token_expires
+    store_refresh_token(db, user.id, refresh_token, jti, expires_at)
+    
+    # 构建响应
+    from fastapi import Response
+    from fastapi.responses import JSONResponse
+    
+    response = JSONResponse(
+        content={"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    )
+    # 设置刷新令牌到HttpOnly cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,  # 在生产环境中应该设置为True，使用HTTPS
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,  # 7天
+        path="/"
+    )
+    return response
+
+# 刷新访问令牌
+@app.post("/refresh-token", response_model=Token)
+def refresh_token(request: Request, db: Session = Depends(get_db)):
+    # 从cookie中获取刷新令牌
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No refresh token provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 验证刷新令牌
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        # 验证令牌
+        token_data = verify_refresh_token(db, refresh_token, credentials_exception)
+        # 获取用户
+        user = db.query(User).filter(User.id == token_data.user_id).first()
+        if not user:
+            raise credentials_exception
+        
+        # 创建新的访问令牌
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": str(user.id)},
+            expires_delta=access_token_expires
+        )
+        
+        # 构建响应
+        from fastapi.responses import JSONResponse
+        
+        response = JSONResponse(
+            content={"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+        )
+        # 保持刷新令牌不变
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=False,  # 在生产环境中应该设置为True，使用HTTPS
+            samesite="lax",
+            max_age=7 * 24 * 60 * 60,  # 7天
+            path="/"
+        )
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise credentials_exception
 
 # 获取当前用户信息
 @app.get("/users/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-# 上传头像（用于注册时，不需要认证，但添加简单的限制）
-@app.post("/upload-avatar/register")
-async def upload_avatar_register(file: UploadFile = File(...)):
-    # 验证文件类型
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only image files are allowed"
-        )
-    # 验证文件大小
-    contents = await file.read()
-    if len(contents) > 2 * 1024 * 1024:  # 2MB
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File size must be less than 2MB"
-        )
-    # 生成唯一文件名
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    file_path = os.path.join("static/avatars", filename)
-    # 保存文件
-    with open(file_path, "wb") as f:
-        f.write(contents)
-    # 返回文件路径
-    return {"avatar_url": f"/static/avatars/{filename}"}
+# 用户登出
+@app.post("/logout")
+def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 撤销用户的所有刷新令牌
+    revoke_refresh_token(db, current_user.id)
+    # 构建响应，清除refresh token cookie
+    from fastapi import Response
+    response = Response()
+    response.delete_cookie(key="refresh_token")
+    response.headers["Content-Type"] = "application/json"
+    import json
+    response.body = json.dumps({"message": "Logout successful"}).encode()
+    return response
 
 # 上传头像（用于已登录用户，需要认证）
 @app.post("/upload-avatar")
@@ -243,43 +379,75 @@ async def upload_avatar(file: UploadFile = File(...), current_user: User = Depen
         )
     # 生成唯一文件名
     filename = f"{uuid.uuid4()}_{file.filename}"
-    file_path = os.path.join("static/avatars", filename)
+    file_path = os.path.join(AVATAR_UPLOAD_DIR, filename)
     # 保存文件
     with open(file_path, "wb") as f:
         f.write(contents)
     # 返回文件路径
-    return {"avatar_url": f"/static/avatars/{filename}"}
+    return {"avatar_url": file_path}
 
 # 更新用户信息
 @app.put("/users/me", response_model=UserSchema)
-def update_user_me(user_update: UserCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # 检查用户名是否已被其他用户使用
-    if user_update.username != current_user.username:
-        db_user = db.query(User).filter(User.username == user_update.username).first()
-        if db_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already registered"
-            )
-    # 检查邮箱是否已被其他用户使用
-    if user_update.email != current_user.email:
-        db_user = db.query(User).filter(User.email == user_update.email).first()
-        if db_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-    # 更新用户信息
-    current_user.username = user_update.username
-    current_user.displayname = user_update.displayname
-    current_user.email = user_update.email
-    if user_update.avatar:
-        current_user.avatar = user_update.avatar
-    if user_update.password:
-        current_user.password_hash = get_password_hash(user_update.password)
-    db.commit()
-    db.refresh(current_user)
-    return current_user
+def update_user_me(user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        # 检查用户名是否已被其他用户使用
+        if user_update.username != current_user.username:
+            db_user = db.query(User).filter(User.username == user_update.username).first()
+            if db_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username already registered"
+                )
+        # 检查邮箱是否已被其他用户使用
+        if user_update.email != current_user.email:
+            db_user = db.query(User).filter(User.email == user_update.email).first()
+            if db_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered"
+                )
+        
+        # 处理头像
+        if user_update.avatar:
+            # 检查是否是base64格式
+            if user_update.avatar.startswith('data:image/'):
+                avatar_url = save_base64_avatar(user_update.avatar)
+                if avatar_url:
+                    current_user.avatar = avatar_url
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Failed to process avatar"
+                    )
+            else:
+                current_user.avatar = user_update.avatar
+        
+        # 更新用户信息
+        current_user.username = user_update.username
+        current_user.displayname = user_update.displayname
+        current_user.email = user_update.email
+        if user_update.password:
+            current_user.password_hash = get_password_hash(user_update.password)
+        
+        # 提交数据库事务
+        db.commit()
+        # 刷新当前用户对象
+        db.refresh(current_user)
+        # 返回更新后的用户信息
+        return current_user
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        # 记录错误日志
+        print(f"Error updating user: {e}")
+        # 回滚事务
+        db.rollback()
+        # 抛出通用错误
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user profile"
+        )
 
 # 根据username获取用户信息
 @app.get("/users/{username}", response_model=UserSchema)

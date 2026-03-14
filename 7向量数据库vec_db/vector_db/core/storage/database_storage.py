@@ -1,7 +1,6 @@
 import os
 import pymysql
-import uuid
-from typing import bytes
+from typing import Optional
 from .file_storage import FileStorageInterface
 
 class DatabaseStorage(FileStorageInterface):
