@@ -21,7 +21,8 @@ class HNSWVectorDB(BaseVectorDB):
                 metadata_path = os.path.join(self.db_path, f"{collection_id}_metadata.pkl")
                 
                 # 加载索引
-                index = hnswlib.Index(space='l2')
+                # 首先创建一个临时索引来获取维度
+                index = hnswlib.Index(space='l2', dim=128)  # 临时维度，加载后会自动调整
                 index.load_index(index_path)
                 self.collections[collection_id] = index
                 
@@ -134,7 +135,11 @@ class HNSWVectorDB(BaseVectorDB):
         # 删除向量
         if indices:
             for idx in indices:
-                index.mark_deleted(idx)
+                try:
+                    index.mark_deleted(idx)
+                except RuntimeError:
+                    # 忽略已经删除的向量
+                    pass
             # 保存索引和元数据
             self._save_collection(collection_id)
             return True
@@ -149,3 +154,24 @@ class HNSWVectorDB(BaseVectorDB):
         metadata_path = os.path.join(self.db_path, f"{collection_id}_metadata.pkl")
         with open(metadata_path, 'wb') as f:
             pickle.dump(self.metadata[collection_id], f)
+    
+    def delete_collection(self, collection_id: str) -> bool:
+        """删除集合"""
+        if collection_id not in self.collections:
+            return False
+        
+        # 删除索引文件
+        index_path = os.path.join(self.db_path, f"{collection_id}.hnsw")
+        if os.path.exists(index_path):
+            os.remove(index_path)
+        
+        # 删除元数据文件
+        metadata_path = os.path.join(self.db_path, f"{collection_id}_metadata.pkl")
+        if os.path.exists(metadata_path):
+            os.remove(metadata_path)
+        
+        # 从内存中删除
+        del self.collections[collection_id]
+        del self.metadata[collection_id]
+        
+        return True

@@ -50,4 +50,4 @@ if __name__ == "__main__":
     # 创建测试结果目录
     os.makedirs("tests/loadtest", exist_ok=True)
     # 启动locust测试，设置执行时间为60秒，无界面模式运行并输出结果到CSV文件
-    subprocess.run(["locust", "-f", __file__, "--host", "http://localhost:8001", "--run-time", "60s", "--users", "10", "--spawn-rate", "2", "--headless", "--csv", "tests/loadtest/test_results"])
+    subprocess.run(["locust", "-f", __file__, "--host", "http://localhost:8001", "--run-time", "60s", "--users", "10", "--spawn-rate", "2", "--headless", "--csv", "tests/loadtest_results/test_results"])

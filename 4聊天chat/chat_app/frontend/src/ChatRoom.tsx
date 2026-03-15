@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './AvatarStyles.css';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface User {
   id: number;
@@ -29,16 +28,6 @@ interface Message {
   sender: User | null;
 }
 
-interface Invitation {
-  id: number;
-  room_id: number;
-  room_name: string;
-  inviter_id: number;
-  inviter_name: string;
-  status: string;
-  created_at: string;
-}
-
 interface ChatRoomProps {
   user: User;
   onLogout: () => void;
@@ -47,31 +36,22 @@ interface ChatRoomProps {
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch }) => {
   const navigate = useNavigate();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const location = useLocation();
+  const room = location.state?.room as Room;
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [newRoomName, setNewRoomName] = useState('');
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<{id: number, username: string, displayname: string, avatar: string | null}[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [inviteeUsername, setInviteeUsername] = useState('');
-  const [showInvitations, setShowInvitations] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // 加载聊天室列表
+  // 加载聊天室消息
   useEffect(() => {
-    authenticatedFetch('http://localhost:8000/rooms')
-    .then(response => response.json())
-    .then(data => setRooms(Array.isArray(data) ? data : []));
-  }, [authenticatedFetch]);
-  
-  // 加载邀请列表
-  useEffect(() => {
-    authenticatedFetch('http://localhost:8000/invitations')
-    .then(response => response.json())
-    .then(data => setInvitations(Array.isArray(data) ? data : []));
-  }, [authenticatedFetch]);
+    if (room) {
+      authenticatedFetch(`/rooms/${room.id}/messages`)
+      .then(response => response.json())
+      .then(data => setMessages(Array.isArray(data) ? data : []));
+    }
+  }, [room, authenticatedFetch]);
   
   // 初始化WebSocket连接
   useEffect(() => {
@@ -86,6 +66,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
         if (isMounted) {
           isConnected = true;
           console.log('WebSocket connected');
+          // 加入当前房间
+          if (room) {
+            socket?.send(JSON.stringify({
+              type: 'join_room',
+              room_id: room.id
+            }));
+          }
         }
       };
       
@@ -95,9 +82,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
         try {
           const data = JSON.parse(event.data);
           
-          if (data.type === 'online_users') {
-            setOnlineUsers(Array.isArray(data.users) ? data.users : []);
-          } else if (data.type === 'message') {
+          if (data.type === 'message' && data.room_id === room?.id) {
             setMessages(prev => [
               ...(Array.isArray(prev) ? prev : []),
               {
@@ -139,66 +124,28 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
       isMounted = false;
       if (socket) {
         try {
-          // 只有在连接建立后才关闭，避免出现"closed before connection established"错误
           if (isConnected || socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
             socket.close();
           }
         } catch (error) {
-          // 捕获关闭时可能出现的错误
           console.log('WebSocket close error (ignored):', error);
         }
       }
     };
-  }, [user.id]);
+  }, [user.id, room]);
   
   // 滚动到最新消息
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
-  // 选择聊天室
-  const handleRoomSelect = (room: Room) => {
-    setSelectedRoom(room);
-    
-    // 加载聊天室消息
-    authenticatedFetch(`http://localhost:8000/rooms/${room.id}/messages`)
-    .then(response => response.json())
-    .then(data => setMessages(Array.isArray(data) ? data : []));
-    
-    // 加入WebSocket房间
-    if (ws) {
-      ws.send(JSON.stringify({
-        type: 'join_room',
-        room_id: room.id
-      }));
-    }
-  };
-  
-  // 创建聊天室
-  const handleCreateRoom = () => {
-    if (!newRoomName) return;
-    
-    authenticatedFetch('http://localhost:8000/rooms', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ name: newRoomName })
-    })
-    .then(response => response.json())
-    .then(data => {
-      setRooms(prev => [...(Array.isArray(prev) ? prev : []), data]);
-      setNewRoomName('');
-    });
-  };
-  
   // 发送消息
   const handleSendMessage = () => {
-    if (!newMessage || !selectedRoom || !ws) return;
+    if (!newMessage || !room || !ws) return;
     
     ws.send(JSON.stringify({
       type: 'message',
-      room_id: selectedRoom.id,
+      room_id: room.id,
       content: newMessage
     }));
     
@@ -207,10 +154,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
   
   // 发送邀请
   const handleSendInvitation = () => {
-    if (!inviteeUsername || !selectedRoom) return;
+    if (!inviteeUsername || !room) return;
     
     // 首先根据username获取userId
-    authenticatedFetch(`http://localhost:8000/users/${inviteeUsername}`)
+    authenticatedFetch(`/users/${inviteeUsername}`)
     .then(response => {
       if (!response.ok) {
         throw new Error('User not found');
@@ -219,13 +166,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
     })
     .then(user => {
       // 然后发送邀请
-      return authenticatedFetch('http://localhost:8000/invitations', {
+      return authenticatedFetch('/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          room_id: selectedRoom.id,
+          room_id: room.id,
           invitee_id: user.id
         })
       });
@@ -241,194 +188,242 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
     });
   };
   
-  // 处理邀请
-  const handleInvitationAction = (invitationId: number, action: string) => {
-    authenticatedFetch(`http://localhost:8000/invitations/${invitationId}/action`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ action })
-    })
-    .then(response => response.json())
-    .then(data => {
-      // 更新邀请列表
-      setInvitations(prev => (Array.isArray(prev) ? prev : []).filter(inv => inv.id !== invitationId));
-      // 如果接受邀请，重新加载聊天室列表
-      if (action === 'accepted') {
-        authenticatedFetch('http://localhost:8000/rooms')
-        .then(response => response.json())
-        .then(data => setRooms(Array.isArray(data) ? data : []));
-      }
-    });
-  };
-  
-  return (
-    <div className="chat-container">
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <h2>Chat App</h2>
-          <div className="header-buttons">
-            <button onClick={() => setShowInvitations(!showInvitations)}>
-              Invitations ({Array.isArray(invitations) ? invitations.filter(inv => inv.status === 'pending').length : 0})
-            </button>
-            <button onClick={() => navigate('/profile')}>
-              Profile
-            </button>
-            <button onClick={onLogout}>Logout</button>
-          </div>
-        </div>
-        
-        {showInvitations && (
-          <div className="invitations-list">
-            <h3>Pending Invitations</h3>
-            {Array.isArray(invitations) && invitations.filter(inv => inv.status === 'pending').length > 0 ? (
-              invitations.filter(inv => inv.status === 'pending').map(invitation => (
-                <div key={invitation.id} className="invitation-item">
-                  <div className="invitation-info">
-                    <div>Room: {invitation.room_name}</div>
-                    <div>Invited by: {invitation.inviter_name}</div>
-                  </div>
-                  <div className="invitation-actions">
-                    <button onClick={() => handleInvitationAction(invitation.id, 'accepted')}>
-                      Accept
-                    </button>
-                    <button onClick={() => handleInvitationAction(invitation.id, 'rejected')}>
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p>No pending invitations</p>
-            )}
-          </div>
-        )}
-        
-        <div className="create-room">
-          <input
-            type="text"
-            placeholder="Room name"
-            value={newRoomName}
-            onChange={(e) => setNewRoomName(e.target.value)}
-          />
-          <button onClick={handleCreateRoom}>Create</button>
-        </div>
-        
-        <div className="room-list">
-          <h3>Rooms</h3>
-          {Array.isArray(rooms) && rooms.map(room => (
-            <div
-              key={room.id}
-              className={`room-item ${selectedRoom?.id === room.id ? 'active' : ''}`}
-              onClick={() => handleRoomSelect(room)}
-            >
-              {room.name}
-            </div>
-          ))}
-        </div>
-        
-        <div className="online-users">
-          <h3>Online Users</h3>
-          <div className="user-list">
-            {onlineUsers.length > 0 ? (
-              onlineUsers.map(user => {
-                return (
-                  <div key={user.id} className="user-item">
-                    <div className="user-avatar">
-                      <img 
-                        src={user.avatar || '/static/avatars/default/default1.png'} 
-                        alt="User avatar" 
-                      />
-                    </div>
-                    <div className="user-name">
-                      {user.displayname || user.username || `User ${user.id}`}
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p>No online users</p>
-            )}
-          </div>
+  if (!room) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f5f5f5' }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ color: '#333' }}>No room selected</h2>
+          <p style={{ color: '#666', marginBottom: '20px' }}>Please select a room from the rooms list</p>
+          <button 
+            onClick={() => navigate('/')}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#3498db',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '16px'
+            }}
+          >
+            Go to Rooms
+          </button>
         </div>
       </div>
-      
-      <div className="chat-area">
-        {selectedRoom ? (
-          <>
-            <div className="chat-header">
-              <h2>{selectedRoom.name}</h2>
-              <div className="room-actions">
-                <div className="invite-user">
-                  <input
-                    type="text"
-                    placeholder="Username to invite"
-                    value={inviteeUsername}
-                    onChange={(e) => setInviteeUsername(e.target.value)}
+    );
+  }
+  
+  return (
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white' }}>
+        <div style={{ padding: '20px', borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <button 
+              onClick={() => navigate('/')}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Back to Rooms
+            </button>
+            <h2 style={{ margin: 0, color: '#333' }}>{room.name}</h2>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button 
+              onClick={() => navigate('/contacts')}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Contacts
+            </button>
+            <button 
+              onClick={() => navigate('/profile')}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Profile
+            </button>
+            <button 
+              onClick={onLogout}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                backgroundColor: '#ff4757',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+        
+        <div style={{ padding: '15px', borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <input
+              type="text"
+              placeholder="Username to invite"
+              value={inviteeUsername}
+              onChange={(e) => setInviteeUsername(e.target.value)}
+              style={{
+                flex: 1,
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+            <button 
+              onClick={handleSendInvitation}
+              style={{
+                padding: '0 15px',
+                backgroundColor: '#27ae60',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Invite
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            <h4 style={{ margin: 0, color: '#333', flex: '100%' }}>Room Members:</h4>
+            {(room.members && Array.isArray(room.members)) ? room.members.map(member => (
+              <div key={member.id} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '8px 12px', 
+                border: '1px solid #e0e0e0', 
+                borderRadius: '20px', 
+                backgroundColor: 'white', 
+                fontSize: '14px' 
+              }}>
+                <div style={{ 
+                  width: '24px', 
+                  height: '24px', 
+                  borderRadius: '50%', 
+                  overflow: 'hidden' 
+                }}>
+                  <img 
+                    src={member.avatar || '/static/avatars/default/default1.png'} 
+                    alt="Member avatar" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
-                  <button onClick={handleSendInvitation}>Invite</button>
                 </div>
-                <div className="room-members">
-                  {(selectedRoom.members && Array.isArray(selectedRoom.members)) ? selectedRoom.members.map(member => (
-                    <div key={member.id} className="member">
-                      <div className="member-avatar">
-                        <img 
-                          src={member.avatar || '/static/avatars/default/default1.png'} 
-                          alt="Member avatar" 
-                        />
-                      </div>
-                      <span className="member-name">
-                        {member.displayname || member.username}
-                      </span>
-                    </div>
-                  )) : null}
-                </div>
+                <span>{member.displayname || member.username}</span>
               </div>
-            </div>
-            
-            <div className="messages-container">
-              {Array.isArray(messages) && messages.map(message => (
+            )) : null}
+          </div>
+        </div>
+        
+        <div style={{ flex: 1, padding: '20px', overflowY: 'auto', backgroundColor: '#f5f5f5' }}>
+          {Array.isArray(messages) && messages.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {messages.map(message => (
                 <div
                   key={message.id}
-                  className={`message ${message.sender_id === user.id ? 'own' : ''}`}
+                  style={{
+                    maxWidth: '70%',
+                    alignSelf: message.sender_id === user.id ? 'flex-end' : 'flex-start',
+                    padding: '12px',
+                    borderRadius: '18px',
+                    backgroundColor: message.sender_id === user.id ? '#dcf8c6' : 'white',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                  }}
                 >
-                  <div className="message-header">
-                    <div className="message-avatar">
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center' }}>
+                    <div style={{ 
+                      width: '32px', 
+                      height: '32px', 
+                      borderRadius: '50%', 
+                      overflow: 'hidden' 
+                    }}>
                       <img 
                         src={message.sender?.avatar || '/static/avatars/default/default1.png'} 
                         alt="User avatar" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     </div>
-                    <div className="message-sender">
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: '#333' }}>
                       {message.sender?.displayname || message.sender?.username || `User ${message.sender_id}`}
                     </div>
                   </div>
-                  <div className="message-content">{message.content}</div>
-                  <div className="message-time">
+                  <div style={{ fontSize: '16px', color: '#333', lineHeight: '1.4' }}>
+                    {message.content}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#999', marginTop: '8px', textAlign: 'right' }}>
                     {new Date(message.created_at).toLocaleTimeString()}
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
-            
-            <div className="message-input">
-              <input
-                type="text"
-                placeholder="Type a message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              />
-              <button onClick={handleSendMessage}>Send</button>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+              <p>No messages yet. Start the conversation!</p>
             </div>
-          </>
-        ) : (
-          <div className="no-room-selected">
-            <h3>Select a room or create a new one</h3>
+          )}
+        </div>
+        
+        <div style={{ padding: '20px', borderTop: '1px solid #e0e0e0', backgroundColor: 'white' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input
+              type="text"
+              placeholder="Type a message..."
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              style={{
+                flex: 1,
+                padding: '12px',
+                border: '1px solid #ddd',
+                borderRadius: '24px',
+                fontSize: '16px'
+              }}
+            />
+            <button 
+              onClick={handleSendMessage}
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: '#3498db',
+                color: 'white',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                fontSize: '18px'
+              }}
+            >
+              ↵
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

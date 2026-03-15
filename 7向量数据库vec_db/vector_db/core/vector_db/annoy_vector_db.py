@@ -38,8 +38,7 @@ class AnnoyVectorDB(BaseVectorDB):
         self.collections[collection_id] = index
         self.metadata[collection_id] = {}
         
-        # 保存索引和元数据
-        self._save_collection(collection_id)
+        # 不需要立即保存，在插入向量并构建索引后再保存
         return True
     
     def insert(self, collection_id: str, vectors: List[List[float]], metadata: List[Dict[str, Any]]) -> List[str]:
@@ -58,8 +57,10 @@ class AnnoyVectorDB(BaseVectorDB):
             # 添加向量到索引
             index.add_item(i, vector)
             
-            # 存储元数据
-            self.metadata[collection_id][vector_id] = metadata[i]
+            # 存储元数据，包含向量
+            meta_with_vector = metadata[i].copy()
+            meta_with_vector['vector'] = vector
+            self.metadata[collection_id][vector_id] = meta_with_vector
         
         # 构建索引
         index.build(10)  # 10棵树
@@ -154,3 +155,32 @@ class AnnoyVectorDB(BaseVectorDB):
         metadata_path = os.path.join(self.db_path, f"{collection_id}_metadata.pkl")
         with open(metadata_path, 'wb') as f:
             pickle.dump(self.metadata[collection_id], f)
+    
+    def delete_collection(self, collection_id: str) -> bool:
+        """删除集合"""
+        if collection_id not in self.collections:
+            return False
+        
+        # 从内存中删除
+        del self.collections[collection_id]
+        del self.metadata[collection_id]
+        
+        # 删除索引文件
+        index_path = os.path.join(self.db_path, f"{collection_id}.ann")
+        if os.path.exists(index_path):
+            try:
+                os.remove(index_path)
+            except PermissionError:
+                # 忽略文件被占用的错误
+                pass
+        
+        # 删除元数据文件
+        metadata_path = os.path.join(self.db_path, f"{collection_id}_metadata.pkl")
+        if os.path.exists(metadata_path):
+            try:
+                os.remove(metadata_path)
+            except PermissionError:
+                # 忽略文件被占用的错误
+                pass
+        
+        return True

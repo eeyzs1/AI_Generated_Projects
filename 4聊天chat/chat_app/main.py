@@ -21,9 +21,11 @@ from database import get_db, engine, Base
 from models.user import User
 from models.room import Room
 from models.message import Message
+from models.contact import contact
 from schemas.user import UserCreate, UserUpdate, User as UserSchema, Token, UserLogin, PasswordResetRequest, PasswordReset
 from schemas.room import RoomCreate, Room as RoomSchema, RoomInvitationCreate, RoomInvitation, RoomInvitationResponse, InvitationAction
 from schemas.message import MessageCreate, Message as MessageSchema
+from schemas.contact import contactCreate, contact as contactSchema, contactResponse, ContactResponse, contactAction
 from services.auth_service import (
     get_password_hash, authenticate_user, create_access_token, create_refresh_token,
     verify_token, ACCESS_TOKEN_EXPIRE_MINUTES, send_verification_email, 
@@ -34,6 +36,10 @@ from services.chat_service import (
     create_room, get_user_rooms, get_room, add_user_to_room,
     send_message, get_room_messages, get_room_members, is_user_in_room,
     send_invitation, get_user_invitations, handle_invitation, get_invitation
+)
+from services.contact_service import (
+    send_contact_request, get_user_contact_requests, handle_contact_request,
+    get_user_contacts, remove_contact, search_users
 )
 from services.ws_service import manager
 
@@ -679,6 +685,75 @@ def handle_invitation_action(invitation_id: int, action: InvitationAction, curre
             detail="Invitation not found or already processed"
         )
     return {"detail": f"Invitation {action.action}ed successfully"}
+
+# 发送联系人请求
+@app.post("/contact-requests", response_model=contactSchema)
+def send_contact_request_endpoint(contact: contactCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_contact = send_contact_request(db, contact, current_user.id)
+    if not db_contact:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contact request failed. Either you're trying to add yourself, the user doesn't exist, or you already have a pending request or are already contacts."
+        )
+    return db_contact
+
+# 获取联系人请求列表
+@app.get("/contact-requests", response_model=List[contactResponse])
+def get_contact_requests(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    requests = get_user_contact_requests(db, current_user.id)
+    # 转换为响应格式
+    response_requests = []
+    for request in requests:
+        sender = db.query(User).filter(User.id == request.sender_id).first()
+        response_requests.append(contactResponse(
+            id=request.id,
+            sender_id=request.sender_id,
+            sender_username=sender.username if sender else "Unknown User",
+            sender_displayname=sender.displayname if sender else "Unknown User",
+            sender_avatar=sender.avatar if sender else None,
+            status=request.status,
+            created_at=request.created_at
+        ))
+    return response_requests
+
+# 处理联系人请求
+@app.post("/contact-requests/{request_id}/action")
+def handle_contact_request_endpoint(request_id: int, action: contactAction, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if action.action not in ["accepted", "rejected"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid action. Must be 'accepted' or 'rejected'."
+        )
+    result = handle_contact_request(db, request_id, current_user.id, action.action)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact request not found or already processed"
+        )
+    return {"detail": f"Contact request {action.action}ed successfully"}
+
+# 获取联系人列表
+@app.get("/contacts", response_model=List[ContactResponse])
+def get_contacts(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    contacts = get_user_contacts(db, current_user.id)
+    return contacts
+
+# 删除联系人
+@app.delete("/contacts/{contact_id}")
+def remove_contact_endpoint(contact_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    result = remove_contact(db, current_user.id, contact_id)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="contact not found"
+        )
+    return {"detail": "Contact removed successfully"}
+
+# 搜索用户
+@app.get("/users/search", response_model=List[ContactResponse])
+def search_users_endpoint(query: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    users = search_users(db, query, current_user.id)
+    return users
 
 # 根路径
 @app.get("/")

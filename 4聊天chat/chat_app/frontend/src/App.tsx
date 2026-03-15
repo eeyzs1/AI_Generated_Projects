@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Register from './Register';
-import ChatRoom from './ChatRoom';
-import UserList from './UserList';
+import MainLayout from './MainLayout';
+
 import UserProfile from './UserProfile';
 import VerifyEmail from './VerifyEmail';
 import PasswordResetRequest from './PasswordResetRequest';
 import PasswordReset from './PasswordReset';
+import Contacts from './Contacts';
+import ContactProfile from './ContactProfile';
 
 interface User {
   id: number;
@@ -21,7 +23,7 @@ interface User {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   // 刷新token的函数
@@ -30,7 +32,7 @@ const App: React.FC = () => {
     
     setIsRefreshing(true);
     try {
-      const response = await fetch('http://localhost:8000/refresh-token', {
+      const response = await fetch('/refresh-token', {
         method: 'POST',
         credentials: 'include' // 包含cookie
       });
@@ -97,7 +99,7 @@ const App: React.FC = () => {
   // 验证token并获取用户信息
   useEffect(() => {
     if (token) {
-      authenticatedFetch('http://localhost:8000/users/me')
+      authenticatedFetch('/users/me')
         .then(response => response.json())
         .then(data => setUser(data))
         .catch(() => {
@@ -109,12 +111,13 @@ const App: React.FC = () => {
   
   const handleLogin = (newToken: string) => {
     setToken(newToken);
+    localStorage.setItem('token', newToken);
   };
   
   const handleLogout = async () => {
     // 调用登出接口（如果有）
     try {
-      await fetch('http://localhost:8000/logout', {
+      await fetch('/logout', {
         method: 'POST',
         credentials: 'include'
       });
@@ -123,6 +126,7 @@ const App: React.FC = () => {
     }
     setToken(null);
     setUser(null);
+    localStorage.removeItem('token');
   };
   
   const handleUserUpdate = (updatedUser: User) => {
@@ -145,9 +149,11 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/login" element={token ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
           <Route path="/register" element={token ? <Navigate to="/" /> : <Register />} />
-          <Route path="/" element={token ? (user ? <ChatRoom user={user} onLogout={handleLogout} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
-          <Route path="/users" element={token ? (user ? <UserList user={user} onLogout={handleLogout} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/" element={token ? (user ? <MainLayout user={user} onLogout={handleLogout} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+
           <Route path="/profile" element={token ? (user ? <UserProfile user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/contacts" element={token ? (user ? <Contacts user={user} onLogout={handleLogout} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
+          <Route path="/contact/:contactId" element={token ? (user ? <ContactProfile user={user} onLogout={handleLogout} authenticatedFetch={authenticatedFetch} /> : <div>Loading...</div>) : <Navigate to="/login" />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/reset-password-request" element={token ? <Navigate to="/" /> : <PasswordResetRequest />} />
           <Route path="/reset-password" element={token ? <Navigate to="/" /> : <PasswordReset />} />

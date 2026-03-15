@@ -1,18 +1,20 @@
+import time
 from typing import List, Any
 from .base_processor import BaseProcessor
 from config.config import config
 from core.model_manager import model_manager
 
 class TextProcessor(BaseProcessor):
-    def __init__(self, model_type=None, model_name=None, api_key=None, model_path=None):
+    def __init__(self, model_type=None, model_name=None, api_key=None, model_path=None, test_mode=False):
         # 使用配置中的参数，如果没有提供
         self.model_type = model_type or config.get('TEXT_PROCESSING_MODEL_TYPE', 'local')
         self.model_name = model_name or config.get('TEXT_PROCESSING_MODEL_NAME', 'shibing624/text2vec-base-chinese')
         self.api_key = api_key or config.get('TEXT_PROCESSING_API_KEY', '')
         self.model_path = model_path or config.get('EMBEDDING_MODEL_PATH', './models/embedding')
+        self.test_mode = test_mode
         
         # 确保模型可用，但即使失败也继续运行
-        if self.model_type == 'local':
+        if self.model_type == 'local' and not self.test_mode:
             try:
                 model_manager.ensure_model_available(self.model_name, 'text')
             except Exception as e:
@@ -38,6 +40,13 @@ class TextProcessor(BaseProcessor):
         return content
     
     def embed(self, content: str) -> List[float]:
+        start_time = time.time()
         # 模拟嵌入向量，返回固定长度的随机向量
         import random
-        return [random.random() for _ in range(384)]
+        embedding = [random.random() for _ in range(384)]
+        
+        # 记录模型使用情况
+        processing_time = time.time() - start_time
+        model_manager.record_model_usage(self.model_name, 'text', processing_time)
+        
+        return embedding

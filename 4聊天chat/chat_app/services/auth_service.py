@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -12,6 +12,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 import time
+# 定期更新密钥
+import threading
 
 # 密钥配置
 ALGORITHM = os.environ.get("ALGORITHM", "HS256")
@@ -104,9 +106,7 @@ class KeyManagementService:
 # 初始化KMS
 kms = KeyManagementService()
 
-# 定期更新密钥
-import threading
-import time
+
 
 # 从环境变量获取密钥更新频率（小时）
 KEY_ROTATION_INTERVAL_HOURS = int(os.environ.get("KEY_ROTATION_INTERVAL_HOURS", "24"))
@@ -125,7 +125,7 @@ def rotate_keys_periodically():
             kms.deactivate_old_keys("refresh")
             kms.generate_new_key("refresh")
             
-            print(f"Keys rotated at {datetime.utcnow()}")
+            print(f"Keys rotated at {datetime.now(timezone.utc)}")
         except Exception as e:
             print(f"Error rotating keys: {e}")
         

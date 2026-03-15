@@ -60,7 +60,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onLogout, onUserUpdate,
         updateData.password = password;
       }
 
-      authenticatedFetch('http://localhost:8000/users/me', {
+      authenticatedFetch('/users/me', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'

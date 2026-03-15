@@ -24,6 +24,8 @@ from core.vector_db.base_vector_db import BaseVectorDB
 from core.vector_db.faiss_vector_db import FAISSVectorDB
 from core.vector_db.hnsw_vector_db import HNSWVectorDB
 from core.vector_db.annoy_vector_db import AnnoyVectorDB
+from core.utils.parallel_processor import parallel_processor
+from core.logging.log_manager import logger
 
 class DataFlowManager:
     def __init__(self, test_mode=False):
@@ -32,10 +34,10 @@ class DataFlowManager:
         # 验证配置
         validation_errors = self.config.validate_config()
         if validation_errors:
-            print("配置验证错误:")
+            logger.warning("配置验证错误:")
             for error in validation_errors:
-                print(f"- {error}")
-            print("使用默认配置继续运行...")
+                logger.warning(f"- {error}")
+            logger.warning("使用默认配置继续运行...")
         self.file_storage = self._init_file_storage()
         self.metadata_storage = self._init_metadata_storage()
         self.vector_db = self._init_vector_db()
@@ -201,7 +203,7 @@ class DataFlowManager:
                     database=self.config.get('MONGO_DATABASE')
                 )
         except Exception as e:
-            print(f"无法连接到{storage_type}存储，使用内存存储作为备选: {e}")
+            logger.error(f"无法连接到{storage_type}存储，使用内存存储作为备选: {e}")
         
         # 如果所有存储都失败，使用内存存储
         return InMemoryStorage()
@@ -337,7 +339,7 @@ class DataFlowManager:
         
         # 在测试模式下使用模拟处理器
         if test_mode:
-            print("使用模拟处理器")
+            logger.info("使用模拟处理器")
             # 创建模拟文本处理器
             class MockTextProcessor(BaseProcessor):
                 def chunk(self, content: str):
@@ -376,7 +378,7 @@ class DataFlowManager:
                 text_config = self.config.apply_model_config('text')
                 processors['text'] = TextProcessor(**text_config)
             except Exception as e:
-                print(f"初始化文本处理器失败，使用模拟处理器: {e}")
+                logger.error(f"初始化文本处理器失败，使用模拟处理器: {e}")
                 # 创建一个简单的模拟文本处理器
                 class MockTextProcessor(BaseProcessor):
                     def chunk(self, content: str):
@@ -393,7 +395,7 @@ class DataFlowManager:
                 image_config = self.config.apply_model_config('image')
                 processors['image'] = ImageProcessor(**image_config)
             except Exception as e:
-                print(f"初始化图像处理器失败，使用模拟处理器: {e}")
+                logger.error(f"初始化图像处理器失败，使用模拟处理器: {e}")
                 # 创建一个简单的模拟图像处理器
                 class MockImageProcessor(BaseProcessor):
                     def chunk(self, content):
@@ -410,7 +412,7 @@ class DataFlowManager:
                 video_config = self.config.apply_model_config('image')  # 视频处理器使用图像模型配置
                 processors['video'] = VideoProcessor(**video_config)
             except Exception as e:
-                print(f"初始化视频处理器失败，使用模拟处理器: {e}")
+                logger.error(f"初始化视频处理器失败，使用模拟处理器: {e}")
                 # 创建一个简单的模拟视频处理器
                 class MockVideoProcessor(BaseProcessor):
                     def chunk(self, content):
@@ -557,16 +559,19 @@ class DataFlowManager:
     
     def process_batch_files(self, file_paths: List[str], collection_id: str) -> List[Dict[str, Any]]:
         """批量处理文件"""
-        results = []
-        for file_path in file_paths:
+        # 定义处理函数
+        def process_file_wrapper(file_path):
             try:
                 result = self.process_file(file_path, collection_id)
-                results.append(result)
+                return result
             except Exception as e:
-                results.append({
+                return {
                     'file_path': file_path,
                     'error': str(e)
-                })
+                }
+        
+        # 使用并行处理器处理文件
+        results = parallel_processor.process_batch(file_paths, process_file_wrapper)
         return results
     
     def search(self, collection_id: str, query: str, top_k: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
