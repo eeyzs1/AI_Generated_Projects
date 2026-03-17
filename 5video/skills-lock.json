@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "skills": {
+    "animator-skill": {
+      "source": "RainLib/AI-Storyboard",
+      "sourceType": "github",
+      "computedHash": "74c31e56fc78d0109e17aa1842afb9ab444e75813c9f4a18ca1d73b1830357c9"
+    },
+    "film-storyboard-skill": {
+      "source": "RainLib/AI-Storyboard",
+      "sourceType": "github",
+      "computedHash": "f0f6c506ea4f4a6c0acb2c474b701d34f86e07b9253e7c14c69262bcbbb777cd"
+    },
+    "screenwriter": {
+      "source": "macrochen/seedance-screenwriter-skills",
+      "sourceType": "github",
+      "computedHash": "2256a8606070738bbbed774ed3762d8b2ecc0c8d004a40deaebea51fb48acdd6"
+    },
+    "scriptwriter-skill": {
+      "source": "RainLib/AI-Storyboard",
+      "sourceType": "github",
+      "computedHash": "cf77fc2b71578d37c922f4221681fcf8c799d3ee28e8954870d98d76bb4bb38e"
+    },
+    "storyboard-review-skill": {
+      "source": "RainLib/AI-Storyboard",
+      "sourceType": "github",
+      "computedHash": "673d6b38a4d14f04328acecc888d1a13d610c250a0bfc8be3d2434500cfed839"
+    }
+  }
+}
