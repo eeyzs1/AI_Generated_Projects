@@ -1,0 +1,43 @@
+# k8s/overlays/cloud/kustomization.yaml
+# Kustomize overlay：云服务中间件方案
+# 使用方式：kubectl apply -k k8s/overlays/cloud/
+#
+# 使用前请先编辑 cloud-env.yaml，填写云服务连接信息
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../services/user-service.yaml
+  - ../../services/group-service.yaml
+  - ../../services/message-service.yaml
+  - ../../services/connector-service.yaml
+  - ../../services/push-service.yaml
+  - ../../services/storage-service.yaml
+  - ../../services/frontend.yaml
+
+patches:
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: user-service
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: group-service
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: message-service
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: connector-service
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: push-service
+  - path: cloud-env-patch.yaml
+    target:
+      kind: Deployment
+      name: storage-service

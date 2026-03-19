@@ -153,3 +153,46 @@ chat_app/
    - 优化WebSocket连接管理，确保实时消息传递的可靠性
    - 确保房间列表和聊天信息的数据一致性
    - 保持现有功能的完整性，同时支持新的布局结构
+
+4. 微服务架构转型要求：将项目从单体应用转型为微服务架构，参考 IM_microservice_design.md。
+   - 按业务域拆分为 6 个独立微服务，每个服务独立部署、独立数据库、独立 Dockerfile：
+     - user-service（端口 8001）：用户注册/登录/资料管理/联系人管理/Token 管理/邮箱验证/密码重置
+       迁移来源：services/auth_service.py、services/contact_service.py、models/user.py、models/contact.py、models/refresh_token.py
+     - group-service（端口 8002）：聊天室创建/管理/成员管理/邀请处理
+       迁移来源：services/chat_service.py（rooms/invitations 部分）、models/room.py
+     - message-service（端口 8003）：消息收发/历史记录存储/分页查询
+       迁移来源：services/chat_service.py（messages 部分）、models/message.py
+     - connector-service（端口 8004）：WebSocket 长连接维护/实时消息推送/在线状态管理
+       迁移来源：services/ws_service.py、main.py 中的 WebSocket 端点
+       注意：在线状态存储需从内存改为 Redis，支持多实例水平扩展
+     - push-service（端口 8005）：离线消息推送（新建服务，单体中无对应代码）
+     - storage-service（端口 8006）：文件/头像上传/裁剪/下载
+       迁移来源：main.py 中的头像上传端点、static/avatars/ 目录
+   - 中间件要求：
+     - MySQL（端口 3306）：各服务独立数据库（im_user / im_group / im_message / im_storage），数据自治，不跨服务直接操作数据库
+     - Redis（端口 6379）：存储登录态、在线状态、未读消息数缓存
+     - Kafka（端口 9092）：异步事件总线，核心 Topic 包括 msg_sent / user_online / user_offline / group_created / member_changed / user_registered
+     - Nacos（端口 8848）：配置中心 + 服务注册发现，所有服务启动后注册到 Nacos，服务间调用通过 Nacos 查地址
+     - APISIX（端口 8080）：API 网关，统一路由、鉴权、限流、跨域处理
+   - 服务间通信：
+     - 同步（HTTP）：用于需要即时结果的权限校验场景
+       示例：message-service 发消息前 HTTP 调用 group-service 校验用户是否为群成员
+       示例：connector-service 建立连接时 HTTP 调用 user-service 校验 Token 有效性
+     - 异步（Kafka）：用于消息分发和事件通知场景
+       示例：message-service 发布 msg_sent → connector-service 消费并推送给在线用户
+       示例：message-service 发布 msg_sent → push-service 消费并推送给离线用户
+   - 网关路由配置（APISIX）：
+     - /api/user/* → user-service:8001
+     - /api/group/* → group-service:8002
+     - /api/message/* → message-service:8003
+     - /ws/* → connector-service:8004
+     - /api/storage/* → storage-service:8006
+   - 部署要求：
+     - 编写根目录 docker-compose.yml，一键启动所有微服务和中间件
+     - 每个微服务编写独立的 Dockerfile（基于 Python 3.11，FastAPI + uvicorn 启动）
+     - 编写 gateway/apisix.yaml 配置 APISIX 路由规则
+     - 服务间通过 Docker 内置 DNS 通信（如 user-service:8001），不硬编码 IP
+   - 前端适配：
+     - 所有 HTTP API 调用改为通过 APISIX 网关统一入口（http://localhost:8080）
+     - WebSocket 连接改为 ws://localhost:8080/ws/connect
+     - 前端代码迁移到根目录 frontend/（与各微服务平级）

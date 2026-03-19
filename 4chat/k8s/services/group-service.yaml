@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: group-service
+spec:
+  selector:
+    matchLabels:
+      app: group-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: group-service
+    spec:
+      containers:
+        - name: group-service
+          image: localhost:5000/group-service:latest
+          ports:
+            - containerPort: 8002
+          env:
+            - name: DATABASE_URL
+              value: mysql+pymysql://root:root123@mysql:3306/im_group
+            - name: NACOS_HOST
+              value: nacos
+            - name: NACOS_PORT
+              value: "8848"
+            - name: SERVICE_HOST
+              value: group-service
+            - name: SERVICE_PORT
+              value: "8002"
+            - name: USER_SERVICE_URL
+              value: http://user-service:8001
+            - name: SECRET_KEY
+              value: "your-secret-key-change-in-production"
+            - name: ACCESS_SECRET_KEY
+              value: "your-secret-key-change-in-production"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: group-service
+spec:
+  selector:
+    app: group-service
+  ports:
+    - port: 8002

@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-jose[cryptography]
+cryptography
+python-dotenv
+redis
+aiokafka
+httpx
+nacos-sdk-python

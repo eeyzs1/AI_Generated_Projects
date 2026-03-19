@@ -1,0 +1,273 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: im-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: im_user
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: im-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: im-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: im-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  scylladb:
+    image: scylladb/scylla:5.4
+    container_name: im-scylladb
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla_data:/var/lib/scylla
+    command: --smp 1 --memory 512M --overprovisioned 1
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    container_name: im-nacos
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  etcd:
+    image: bitnami/etcd:3.5.9
+    container_name: im-etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+    ports:
+      - "2379:2379"
+
+  apisix:
+    image: apache/apisix:3.6.0-debian
+    container_name: im-apisix
+    depends_on:
+      - etcd
+    ports:
+      - "8080:9080"
+      - "9180:9180"
+    volumes:
+      - ./gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    environment:
+      - APISIX_STAND_ALONE=true
+
+  user-service:
+    build: ./services/user-service
+    container_name: im-user-service
+    ports:
+      - "8001:8001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_user
+      REDIS_URL: redis://redis:6379/0
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: user-service
+      SERVICE_PORT: "8001"
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+    restart: on-failure
+
+  group-service:
+    build: ./services/group-service
+    container_name: im-group-service
+    ports:
+      - "8002:8002"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_group
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: group-service
+      SERVICE_PORT: "8002"
+      USER_SERVICE_URL: http://user-service:8001
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+    restart: on-failure
+
+  message-service:
+    build: ./services/message-service
+    container_name: im-message-service
+    ports:
+      - "8003:8003"
+    depends_on:
+      scylladb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      SCYLLA_HOSTS: scylladb
+      SCYLLA_PORT: "9042"
+      SCYLLA_KEYSPACE: im_message
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: message-service
+      SERVICE_PORT: "8003"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+    restart: on-failure
+
+  connector-service:
+    build: ./services/connector-service
+    container_name: im-connector-service
+    ports:
+      - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: connector-service
+      SERVICE_PORT: "8004"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+    restart: on-failure
+
+  push-service:
+    build: ./services/push-service
+    container_name: im-push-service
+    ports:
+      - "8005:8005"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: push-service
+      SERVICE_PORT: "8005"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+    restart: on-failure
+
+  storage-service:
+    build: ./services/storage-service
+    container_name: im-storage-service
+    ports:
+      - "8006:8006"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_storage
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: storage-service
+      SERVICE_PORT: "8006"
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+    volumes:
+      - storage_data:/app/static/avatars/uploads
+    restart: on-failure
+
+  frontend:
+    build: ./frontend
+    container_name: im-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - apisix
+    restart: on-failure
+
+volumes:
+  mysql_data:
+  scylla_data:
+  storage_data:

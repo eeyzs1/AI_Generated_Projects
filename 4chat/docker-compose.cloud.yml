@@ -1,0 +1,150 @@
+# docker-compose.cloud.yml
+# 云服务中间件方案：只启动业务服务，中间件连接云服务
+# 使用方式：
+#   1. 复制 .env.example 为 .env 并填写云服务连接信息
+#   2. docker-compose -f docker-compose.cloud.yml up -d
+
+version: '3.8'
+
+services:
+  user-service:
+    build: ./services/user-service
+    container_name: im-user-service
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      DATABASE_URL: ${MYSQL_USER_URL}
+      REDIS_URL: ${REDIS_URL}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: user-service
+      SERVICE_PORT: "8001"
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    restart: on-failure
+
+  group-service:
+    build: ./services/group-service
+    container_name: im-group-service
+    ports:
+      - "8002:8002"
+    env_file: .env
+    environment:
+      DATABASE_URL: ${MYSQL_GROUP_URL}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: group-service
+      SERVICE_PORT: "8002"
+      USER_SERVICE_URL: http://user-service:8001
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+    restart: on-failure
+
+  message-service:
+    build: ./services/message-service
+    container_name: im-message-service
+    ports:
+      - "8003:8003"
+    env_file: .env
+    environment:
+      SCYLLA_HOSTS: ${SCYLLA_HOSTS}
+      SCYLLA_PORT: ${SCYLLA_PORT:-9042}
+      SCYLLA_KEYSPACE: im_message
+      SCYLLA_USER: ${SCYLLA_USER:-}
+      SCYLLA_PASSWORD: ${SCYLLA_PASSWORD:-}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: message-service
+      SERVICE_PORT: "8003"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+    restart: on-failure
+
+  connector-service:
+    build: ./services/connector-service
+    container_name: im-connector-service
+    ports:
+      - "8004:8004"
+    env_file: .env
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: connector-service
+      SERVICE_PORT: "8004"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+    restart: on-failure
+
+  push-service:
+    build: ./services/push-service
+    container_name: im-push-service
+    ports:
+      - "8005:8005"
+    env_file: .env
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: push-service
+      SERVICE_PORT: "8005"
+      USER_SERVICE_URL: http://user-service:8001
+      GROUP_SERVICE_URL: http://group-service:8002
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    restart: on-failure
+
+  storage-service:
+    build: ./services/storage-service
+    container_name: im-storage-service
+    ports:
+      - "8006:8006"
+    env_file: .env
+    environment:
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: storage-service
+      SERVICE_PORT: "8006"
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+    volumes:
+      - storage_data:/app/static/avatars/uploads
+    restart: on-failure
+
+  apisix:
+    image: apache/apisix:3.6.0-debian
+    container_name: im-apisix
+    ports:
+      - "8080:9080"
+    volumes:
+      - ./gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    environment:
+      - APISIX_STAND_ALONE=true
+    restart: on-failure
+
+  frontend:
+    build: ./frontend
+    container_name: im-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - apisix
+    restart: on-failure
+
+volumes:
+  storage_data:

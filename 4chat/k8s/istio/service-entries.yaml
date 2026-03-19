@@ -1,0 +1,70 @@
+# k8s/istio/service-entries.yaml
+# 跨集群服务注册
+# 当集群A 需要访问集群B 的服务时，通过 ServiceEntry 注册远端服务地址
+#
+# 使用方式：
+#   将 <CLUSTER_B_EASTWEST_IP> 替换为集群B East-West Gateway 的实际 IP
+#   kubectl get svc istio-eastwestgateway -n istio-system (在集群B执行)
+
+# 集群A 访问集群B 的 connector-service（WebSocket，需要就近接入）
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: connector-service-remote
+spec:
+  hosts:
+    - connector-service.remote.svc.cluster.local
+  ports:
+    - number: 8004
+      name: http
+      protocol: HTTP
+  location: MESH_INTERNAL
+  resolution: STATIC
+  endpoints:
+    - address: "<CLUSTER_B_EASTWEST_IP>"
+      ports:
+        http: 15443
+      labels:
+        cluster: cluster-b
+---
+# 集群B 访问集群A 的 user-service
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: user-service-remote
+spec:
+  hosts:
+    - user-service.remote.svc.cluster.local
+  ports:
+    - number: 8001
+      name: http
+      protocol: HTTP
+  location: MESH_INTERNAL
+  resolution: STATIC
+  endpoints:
+    - address: "<CLUSTER_A_EASTWEST_IP>"
+      ports:
+        http: 15443
+      labels:
+        cluster: cluster-a
+---
+# 集群B 访问集群A 的 group-service
+apiVersion: networking.istio.io/v1alpha3
+kind: ServiceEntry
+metadata:
+  name: group-service-remote
+spec:
+  hosts:
+    - group-service.remote.svc.cluster.local
+  ports:
+    - number: 8002
+      name: http
+      protocol: HTTP
+  location: MESH_INTERNAL
+  resolution: STATIC
+  endpoints:
+    - address: "<CLUSTER_A_EASTWEST_IP>"
+      ports:
+        http: 15443
+      labels:
+        cluster: cluster-a

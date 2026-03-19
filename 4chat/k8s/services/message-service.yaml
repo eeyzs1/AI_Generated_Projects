@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-service
+spec:
+  selector:
+    matchLabels:
+      app: message-service
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: message-service
+    spec:
+      containers:
+        - name: message-service
+          image: localhost:5000/message-service:latest
+          ports:
+            - containerPort: 8003
+          env:
+            - name: SCYLLA_HOSTS
+              value: scylladb
+            - name: SCYLLA_PORT
+              value: "9042"
+            - name: SCYLLA_KEYSPACE
+              value: im_message
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: NACOS_HOST
+              value: nacos
+            - name: NACOS_PORT
+              value: "8848"
+            - name: SERVICE_HOST
+              value: message-service
+            - name: SERVICE_PORT
+              value: "8003"
+            - name: USER_SERVICE_URL
+              value: http://user-service:8001
+            - name: GROUP_SERVICE_URL
+              value: http://group-service:8002
+            - name: SECRET_KEY
+              value: "your-secret-key-change-in-production"
+            - name: ACCESS_SECRET_KEY
+              value: "your-secret-key-change-in-production"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-service
+spec:
+  selector:
+    app: message-service
+  ports:
+    - port: 8003

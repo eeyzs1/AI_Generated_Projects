@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+cassandra-driver
+python-jose[cryptography]
+pydantic
+python-dotenv
+httpx
+aiokafka
+nacos-sdk-python

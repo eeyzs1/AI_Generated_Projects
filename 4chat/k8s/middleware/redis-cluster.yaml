@@ -1,0 +1,111 @@
+# k8s/middleware/redis-cluster.yaml
+# Redis 集群模式：6节点（3主3从）
+# 适合数据量大、需要横向扩展的场景
+# 注意：集群模式与哨兵模式互斥，二选一
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cluster-config
+data:
+  redis.conf: |
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    appendonly yes
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+spec:
+  selector:
+    matchLabels:
+      app: redis-cluster
+  serviceName: redis-cluster
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: redis-cluster
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - containerPort: 6379
+              name: client
+            - containerPort: 16379
+              name: gossip
+          volumeMounts:
+            - name: config
+              mountPath: /etc/redis
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: redis-cluster-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+---
+# Headless service for StatefulSet DNS
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+spec:
+  selector:
+    app: redis-cluster
+  clusterIP: None
+  ports:
+    - name: client
+      port: 6379
+    - name: gossip
+      port: 16379
+---
+# Job: 集群初始化（所有节点启动后执行一次）
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-init
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: redis-cluster-init
+          image: redis:7-alpine
+          command:
+            - sh
+            - -c
+            - |
+              # 等待所有节点就绪
+              for i in 0 1 2 3 4 5; do
+                until redis-cli -h redis-cluster-$i.redis-cluster ping; do
+                  echo "Waiting for redis-cluster-$i..."
+                  sleep 2
+                done
+              done
+              # 初始化集群（3主3从）
+              redis-cli --cluster create \
+                redis-cluster-0.redis-cluster:6379 \
+                redis-cluster-1.redis-cluster:6379 \
+                redis-cluster-2.redis-cluster:6379 \
+                redis-cluster-3.redis-cluster:6379 \
+                redis-cluster-4.redis-cluster:6379 \
+                redis-cluster-5.redis-cluster:6379 \
+                --cluster-replicas 1 --cluster-yes
+              echo "Redis cluster initialized"

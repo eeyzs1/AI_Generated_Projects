@@ -1,0 +1,60 @@
+routes:
+  - id: user-service-route
+    uri: /api/user/*
+    upstream:
+      nodes:
+        "user-service:8001": 1
+      type: roundrobin
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type"
+
+  - id: group-service-route
+    uri: /api/group/*
+    upstream:
+      nodes:
+        "group-service:8002": 1
+      type: roundrobin
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type"
+
+  - id: message-service-route
+    uri: /api/message/*
+    upstream:
+      nodes:
+        "message-service:8003": 1
+      type: roundrobin
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type"
+
+  - id: connector-service-ws-route
+    uri: /ws/*
+    upstream:
+      nodes:
+        "connector-service:8004": 1
+      type: roundrobin
+    plugins:
+      proxy-rewrite:
+        use_real_request_uri_unsafe: true
+
+  - id: storage-service-route
+    uri: /api/storage/*
+    upstream:
+      nodes:
+        "storage-service:8006": 1
+      type: roundrobin
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type"
+
+#END

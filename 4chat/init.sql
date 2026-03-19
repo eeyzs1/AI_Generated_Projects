@@ -1,0 +1,8 @@
+CREATE DATABASE IF NOT EXISTS im_user CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS im_group CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS im_storage CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+GRANT ALL PRIVILEGES ON im_user.* TO 'root'@'%';
+GRANT ALL PRIVILEGES ON im_group.* TO 'root'@'%';
+GRANT ALL PRIVILEGES ON im_storage.* TO 'root'@'%';
+FLUSH PRIVILEGES;
