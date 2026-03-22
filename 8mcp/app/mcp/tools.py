@@ -1,4 +1,4 @@
-from stock import StockData
+from app.stock import StockData
 
 stock_data = StockData()
 

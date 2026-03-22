@@ -3,8 +3,12 @@ from pydantic import BaseModel
 from typing import Dict, List, Any
 from .tools import stock_tools
 
+class ToolCall(BaseModel):
+    name: str
+    args: Dict[str, Any] = {}
+
 class MCPRequest(BaseModel):
-    toolcall: Dict[str, Any]
+    toolcall: ToolCall
 
 class MCPResponse(BaseModel):
     toolresult: Dict[str, Any]
@@ -23,8 +27,8 @@ class MCPServer:
         async def toolcall(request: MCPRequest):
             """处理工具调用请求"""
             toolcall = request.toolcall
-            tool_name = toolcall.get("name")
-            tool_args = toolcall.get("args", {})
+            tool_name = toolcall.name
+            tool_args = toolcall.args
             
             if not tool_name:
                 raise HTTPException(status_code=400, detail="Missing tool name")
@@ -52,19 +56,23 @@ class MCPServer:
                     "error": str(e)
                 })
             
-        # @self.app.get("/mcp/v1/tools")
-        # async def get_tools():
-        #     """获取可用工具列表"""
-        #     return {
-        #         "tools": [
-        #             {
-        #                 "name": tool["name"],
-        #                 "description": tool["description"],
-        #                 "parameters": tool["parameters"]
-        #             } for tool in self.tools
-        #         ]
-        #     }
+        @self.app.get("/mcp/v1/tools")
+        async def get_tools():
+            """获取可用工具列表"""
+            return {
+                "tools": [
+                    {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"]
+                    } for tool in self.tools
+                ]
+            }
             
     @property
     def application(self):
+        return self.app
+    
+    def create_app(self):
+        """创建应用实例"""
         return self.app
