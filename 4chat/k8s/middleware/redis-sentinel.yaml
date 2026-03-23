@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:8-alpine
           ports:
             - containerPort: 6379
           readinessProbe:
@@ -62,7 +62,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:8-alpine
           command: ["redis-server", "--replicaof", "redis-master", "6379"]
           ports:
             - containerPort: 6379
@@ -99,7 +99,7 @@ spec:
     spec:
       containers:
         - name: sentinel
-          image: redis:7-alpine
+          image: redis:8-alpine
           command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
           ports:
             - containerPort: 26379

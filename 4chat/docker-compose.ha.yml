@@ -19,7 +19,7 @@ version: '3.8'
 services:
   # ── MySQL 主从 ───────────────────────────────────────────────
   mysql-master:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: im-mysql-master
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -36,7 +36,7 @@ services:
       retries: 10
 
   mysql-slave:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: im-mysql-slave
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -71,7 +71,7 @@ services:
 
   # ── Redis 主从 + 哨兵 ────────────────────────────────────────
   redis-master:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-master
     ports:
       - "6379:6379"
@@ -82,7 +82,7 @@ services:
       retries: 5
 
   redis-slave-1:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-slave-1
     command: redis-server --replicaof redis-master 6379
     depends_on:
@@ -90,7 +90,7 @@ services:
         condition: service_healthy
 
   redis-slave-2:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-slave-2
     command: redis-server --replicaof redis-master 6379
     depends_on:
@@ -98,7 +98,7 @@ services:
         condition: service_healthy
 
   redis-sentinel-1:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-sentinel-1
     ports:
       - "26379:26379"
@@ -111,7 +111,7 @@ services:
       - redis-slave-2
 
   redis-sentinel-2:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-sentinel-2
     ports:
       - "26380:26379"
@@ -124,7 +124,7 @@ services:
       - redis-slave-2
 
   redis-sentinel-3:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis-sentinel-3
     ports:
       - "26381:26379"
@@ -138,7 +138,7 @@ services:
 
   # ── Zookeeper（Kafka 依赖）───────────────────────────────────
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
+    image: confluentinc/cp-zookeeper:7.4
     container_name: im-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -146,7 +146,7 @@ services:
 
   # ── Kafka 3 Broker ───────────────────────────────────────────
   kafka-1:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.4
     container_name: im-kafka-1
     depends_on: [zookeeper]
     ports:
@@ -168,7 +168,7 @@ services:
       retries: 10
 
   kafka-2:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.4
     container_name: im-kafka-2
     depends_on: [zookeeper]
     ports:
@@ -185,7 +185,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
   kafka-3:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.4
     container_name: im-kafka-3
     depends_on: [zookeeper]
     ports:
@@ -203,7 +203,7 @@ services:
 
   # ── Nacos 3节点集群 ──────────────────────────────────────────
   nacos-1:
-    image: nacos/nacos-server:v2.3.0
+    image: nacos/nacos-server:v2.3
     container_name: im-nacos-1
     ports:
       - "8848:8848"
@@ -223,7 +223,7 @@ services:
         condition: service_healthy
 
   nacos-2:
-    image: nacos/nacos-server:v2.3.0
+    image: nacos/nacos-server:v2.3
     container_name: im-nacos-2
     ports:
       - "8849:8848"
@@ -243,7 +243,7 @@ services:
         condition: service_healthy
 
   nacos-3:
-    image: nacos/nacos-server:v2.3.0
+    image: nacos/nacos-server:v2.3
     container_name: im-nacos-3
     ports:
       - "8850:8848"
@@ -263,7 +263,7 @@ services:
         condition: service_healthy
 
   scylladb:
-    image: scylladb/scylla:5.4
+    image: scylladb/scylla:6.2
     container_name: im-scylladb
     ports:
       - "9042:9042"
@@ -404,7 +404,7 @@ services:
     restart: on-failure
 
   apisix:
-    image: apache/apisix:3.6.0-debian
+    image: apache/apisix:3.13-debian
     container_name: im-apisix
     ports:
       - "8080:9080"

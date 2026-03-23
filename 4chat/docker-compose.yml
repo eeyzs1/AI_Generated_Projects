@@ -1,8 +1,7 @@
-version: '3.8'
 
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: im-mysql
     environment:
       MYSQL_ROOT_PASSWORD: root123
@@ -19,7 +18,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: im-redis
     ports:
       - "6379:6379"
@@ -30,14 +29,14 @@ services:
       retries: 5
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
+    image: confluentinc/cp-zookeeper:7.4
     container_name: im-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:7.4
     container_name: im-kafka
     depends_on:
       - zookeeper
@@ -58,7 +57,7 @@ services:
       retries: 10
 
   scylladb:
-    image: scylladb/scylla:5.4
+    image: scylladb/scylla:6.2
     container_name: im-scylladb
     ports:
       - "9042:9042"
@@ -72,7 +71,7 @@ services:
       retries: 10
 
   nacos:
-    image: nacos/nacos-server:v2.3.0
+    image: nacos/nacos-server:v2.3
     container_name: im-nacos
     environment:
       MODE: standalone
@@ -87,7 +86,7 @@ services:
       retries: 10
 
   etcd:
-    image: bitnami/etcd:3.5.9
+    image: bitnami/etcd:3.5
     container_name: im-etcd
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
@@ -96,7 +95,7 @@ services:
       - "2379:2379"
 
   apisix:
-    image: apache/apisix:3.6.0-debian
+    image: apache/apisix:3.13-debian
     container_name: im-apisix
     depends_on:
       - etcd

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: scylladb
-          image: scylladb/scylla:5.4
+          image: scylladb/scylla:6.2
           args: ["--smp", "1", "--memory", "512M", "--overprovisioned", "1"]
           ports:
             - containerPort: 9042

@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:8-alpine
           command: ["redis-server", "/etc/redis/redis.conf"]
           ports:
             - containerPort: 6379
@@ -87,7 +87,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: redis-cluster-init
-          image: redis:7-alpine
+          image: redis:8-alpine
           command:
             - sh
             - -c
