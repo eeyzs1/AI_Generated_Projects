@@ -38,7 +38,7 @@ const PasswordReset: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:8080/api/user/reset-password?token=${token}`, {
+      const response = await fetch(`/api/user/reset-password?token=${token}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

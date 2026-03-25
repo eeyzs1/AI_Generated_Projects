@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
-python-dotenv
-redis
+python-jose[cryptography]
 aiokafka
-httpx
+redis
 nacos-sdk-python
+python-dotenv

@@ -91,7 +91,7 @@ spec:
     spec:
       containers:
         - name: apisix
-          image: apache/apisix:3.13-debian
+          image: apache/apisix:3.15.0-ubuntu
           env:
             - name: APISIX_STAND_ALONE
               value: "true"

@@ -126,7 +126,7 @@ services:
     restart: on-failure
 
   apisix:
-    image: apache/apisix:3.13-debian
+    image: apache/apisix:3.15.0-ubuntu
     container_name: im-apisix
     ports:
       - "8080:9080"

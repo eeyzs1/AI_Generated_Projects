@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: kafka
-          image: confluentinc/cp-kafka:7.4
+          image: confluentinc/cp-kafka:7.9.6
           env:
             - name: KAFKA_BROKER_ID
               value: "1"
@@ -69,7 +69,7 @@ spec:
     spec:
       containers:
         - name: kafka
-          image: confluentinc/cp-kafka:7.4
+          image: confluentinc/cp-kafka:7.9.6
           env:
             - name: KAFKA_BROKER_ID
               value: "2"
@@ -118,7 +118,7 @@ spec:
     spec:
       containers:
         - name: kafka
-          image: confluentinc/cp-kafka:7.4
+          image: confluentinc/cp-kafka:7.9.6
           env:
             - name: KAFKA_BROKER_ID
               value: "3"

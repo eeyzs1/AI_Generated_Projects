@@ -60,7 +60,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onLogout, onUserUpdate,
         updateData.password = password;
       }
 
-      authenticatedFetch('http://localhost:8080/api/user/me', {
+      authenticatedFetch('/api/user/me', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -144,7 +144,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onLogout, onUserUpdate,
           <div className="avatar-section">
             <div className="current-avatar">
               <img 
-                src={avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'}
+                src={avatar || '/api/storage/static/avatars/default/default1.png'}
                 alt="Current avatar" 
                 className="avatar-image"
               />

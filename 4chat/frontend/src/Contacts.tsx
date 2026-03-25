@@ -35,7 +35,7 @@ const Contacts: React.FC<ContactsProps> = ({ user, onLogout, authenticatedFetch 
   useEffect(() => {
     const fetchContacts = async () => {
       try {
-        const response = await authenticatedFetch('http://localhost:8080/api/user/contacts');
+        const response = await authenticatedFetch('/api/user/contacts');
         if (response.ok) {
           const data = await response.json();
           // 按displayname字母顺序排序
@@ -62,7 +62,7 @@ const Contacts: React.FC<ContactsProps> = ({ user, onLogout, authenticatedFetch 
     }
 
     try {
-      const response = await authenticatedFetch(`http://localhost:8080/api/user/search?query=${encodeURIComponent(searchQuery)}`);
+      const response = await authenticatedFetch(`/api/user/search?query=${encodeURIComponent(searchQuery)}`);
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data);
@@ -76,7 +76,7 @@ const Contacts: React.FC<ContactsProps> = ({ user, onLogout, authenticatedFetch 
   // 发送联系人请求
   const handleAddContact = async (userId: number) => {
     try {
-      const response = await authenticatedFetch('http://localhost:8080/api/user/contact-requests', {
+      const response = await authenticatedFetch('/api/user/contact-requests', {
         method: 'POST',
         body: JSON.stringify({ receiver_id: userId })
       });
@@ -182,7 +182,7 @@ const Contacts: React.FC<ContactsProps> = ({ user, onLogout, authenticatedFetch 
                     overflow: 'hidden', 
                     marginRight: '15px' 
                   }}>
-                    <img src={user.avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'} alt={user.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={user.avatar || '/api/storage/static/avatars/default/default1.png'} alt={user.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ margin: '0 0 5px 0', color: '#333' }}>{user.displayname}</h3>
@@ -234,7 +234,7 @@ const Contacts: React.FC<ContactsProps> = ({ user, onLogout, authenticatedFetch 
                     overflow: 'hidden', 
                     marginRight: '15px' 
                   }}>
-                    <img src={contact.avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'} alt={contact.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={contact.avatar || '/api/storage/static/avatars/default/default1.png'} alt={contact.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ margin: '0 0 5px 0', color: '#333' }}>{contact.displayname}</h3>

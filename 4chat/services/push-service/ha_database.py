@@ -8,39 +8,8 @@ Redis 模式选择（通过环境变量控制，三选一）：
   - 集群模式：设置 REDIS_CLUSTER_HOSTS
 """
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-# ── MySQL 读写分离 ────────────────────────────────────────────
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-DATABASE_SLAVE_URL = os.environ.get("DATABASE_SLAVE_URL", DATABASE_URL)
-
-# 写操作用主库
-write_engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
-# 读操作用从库（无从库时回退到主库）
-read_engine = create_engine(DATABASE_SLAVE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
-
-WriteSession = sessionmaker(autocommit=False, autoflush=False, bind=write_engine)
-ReadSession = sessionmaker(autocommit=False, autoflush=False, bind=read_engine)
-
-def get_write_db():
-    db = WriteSession()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def get_read_db():
-    db = ReadSession()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# 默认 get_db 走主库（保证写后读一致性）
-def get_db():
-    yield from get_write_db()
-
+# push-service 不使用 MySQL，仅使用 Redis 和 Kafka
 
 # ── Redis 哨兵/集群/普通 三模式 ──────────────────────────────
 def get_redis_client():

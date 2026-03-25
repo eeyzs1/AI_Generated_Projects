@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: nacos
-          image: nacos/nacos-server:v2.3
+          image: nacos/nacos-server:v3.1.1-slim
           env:
             - name: MODE
               value: standalone

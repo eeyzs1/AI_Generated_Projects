@@ -1,11 +1,11 @@
-FROM node:18-alpine AS builder
+FROM node:current-alpine3.23 AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm && pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
 
-FROM nginx:alpine
+FROM nginx:stable-alpine3.23-perl
 COPY --from=builder /app/build /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 3000

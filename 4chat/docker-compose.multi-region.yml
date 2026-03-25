@@ -47,14 +47,14 @@ services:
       retries: 5
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4
+    image: confluentinc/cp-zookeeper:7.9.6
     container_name: im-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:7.4
+    image: confluentinc/cp-kafka:7.9.6
     container_name: im-kafka
     depends_on:
       - zookeeper
@@ -77,7 +77,7 @@ services:
   # ── 中心化 Nacos（跨区域共享）────────────────────────────────
   # 真实场景中此服务部署在公网，所有区域的服务都指向它
   nacos:
-    image: nacos/nacos-server:v2.3
+    image: nacos/nacos-server:v3.1.1-slim
     container_name: im-nacos-central
     environment:
       MODE: standalone
@@ -86,7 +86,7 @@ services:
       - "8848:8848"
       - "9848:9848"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/ns/operator/metrics"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -247,7 +247,7 @@ services:
 
   # ── 网关 ─────────────────────────────────────────────────────
   apisix:
-    image: apache/apisix:3.13-debian
+    image: apache/apisix:3.15.0-ubuntu
     container_name: im-apisix
     ports:
       - "8080:9080"

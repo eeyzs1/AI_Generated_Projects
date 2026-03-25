@@ -20,7 +20,7 @@ const VerifyEmail: React.FC = () => {
 
   const verifyEmail = async (token: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/api/user/verify-email?token=${token}`);
+      const response = await fetch(`/api/user/verify-email?token=${token}`);
       const data = await response.json();
       if (response.ok) {
         setMessage(data.message);

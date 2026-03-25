@@ -45,14 +45,14 @@ const Rooms: React.FC<RoomsProps> = ({ user, onLogout, authenticatedFetch }) => 
   
   // 加载聊天室列表
   useEffect(() => {
-    authenticatedFetch('http://localhost:8080/api/group/rooms')
+    authenticatedFetch('/api/group/rooms')
     .then(response => response.json())
     .then(data => setRooms(Array.isArray(data) ? data : []));
   }, [authenticatedFetch]);
   
   // 加载邀请列表
   useEffect(() => {
-    authenticatedFetch('http://localhost:8080/api/group/invitations')
+    authenticatedFetch('/api/group/invitations')
     .then(response => response.json())
     .then(data => setInvitations(Array.isArray(data) ? data : []));
   }, [authenticatedFetch]);
@@ -65,7 +65,7 @@ const Rooms: React.FC<RoomsProps> = ({ user, onLogout, authenticatedFetch }) => 
     
     try {
       const token = localStorage.getItem('token');
-      socket = new WebSocket(`ws://localhost:8080/ws/connect?token=${token}&user_id=${user.id}`);
+      socket = new WebSocket(`/ws/connect?token=${token}&user_id=${user.id}`);
       
       socket.onopen = () => {
         if (isMounted) {
@@ -133,7 +133,7 @@ const Rooms: React.FC<RoomsProps> = ({ user, onLogout, authenticatedFetch }) => 
   
   // 处理邀请
   const handleInvitationAction = (invitationId: number, action: string) => {
-    authenticatedFetch(`http://localhost:8080/api/group/invitations/${invitationId}/action`, {
+    authenticatedFetch(`/api/group/invitations/${invitationId}/action`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -146,7 +146,7 @@ const Rooms: React.FC<RoomsProps> = ({ user, onLogout, authenticatedFetch }) => 
       setInvitations(prev => (Array.isArray(prev) ? prev : []).filter(inv => inv.id !== invitationId));
       // 如果接受邀请，重新加载聊天室列表
       if (action === 'accepted') {
-        authenticatedFetch('http://localhost:8080/api/group/rooms')
+        authenticatedFetch('/api/group/rooms')
         .then(response => response.json())
         .then(data => setRooms(Array.isArray(data) ? data : []));
       }

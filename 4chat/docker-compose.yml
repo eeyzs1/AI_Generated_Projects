@@ -29,33 +29,45 @@ services:
       retries: 5
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4
+    image: confluentinc/cp-zookeeper:7.9.6
     container_name: im-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-
-  kafka:
-    image: confluentinc/cp-kafka:7.4
+  kafka:  # 确保服务名与 depends_on 一致，如果其他地方引用的是 kafka，请保持服务名为 kafka
+    image: confluentinc/cp-kafka:7.9.6
     container_name: im-kafka
     depends_on:
-      - zookeeper
+      - zookeeper  # 注意：根据你的上文，zookeeper 容器名似乎是 im-zookeeper，请确认
     ports:
-      - "9092:9092"
+      - "9092:9092"   # 内部通信端口映射（可选，通常容器间不需要映射到宿主机，但留着也没事）
+      - "9094:9094"   # 外部访问端口映射
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ZOOKEEPER_CONNECT: im-zookeeper:2181  # 确认 zookeeper 的服务名
+      
+      # 【核心修改】明确定义监听器绑定的地址和端口
+      # PLAINTEXT: 绑定容器所有网卡，端口 9092 (给其他容器用)
+      # PLAINTEXT_HOST: 绑定容器所有网卡，端口 9094 (给宿主机用)
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094
+      
+      # 【核心修改】告诉客户端如何连接
+      # 容器内其他服务通过 im-kafka:9092 连接
+      # 宿主机通过 localhost:9094 连接 (因为端口映射了 9094:9094)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://im-kafka:9092,PLAINTEXT_HOST://localhost:9094
+      
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    
+    # 健康检查也要对应修改，检查内部端口即可
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"] 
       interval: 10s
-      timeout: 10s
-      retries: 10
-
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   scylladb:
     image: scylladb/scylla:6.2
     container_name: im-scylladb
@@ -71,22 +83,28 @@ services:
       retries: 10
 
   nacos:
-    image: nacos/nacos-server:v2.3
+    image: nacos/nacos-server:v3.1.1-slim
     container_name: im-nacos
     environment:
       MODE: standalone
       PREFER_HOST_MODE: hostname
+      NACOS_AUTH_ENABLE: false
+      # #below is one fake token for testing, you can generate your own token using nacos security tools, and set NACOS_AUTH_ENABLE as true in production
+      NACOS_AUTH_TOKEN: SecretKey012345678901234567890123456789012345678901234567890123456789
+      NACOS_AUTH_IDENTITY_KEY: nacosDevIdentityKey2026
+      NACOS_AUTH_IDENTITY_VALUE: nacosDevSecretValue888
     ports:
       - "8848:8848"
       - "9848:9848"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/ns/operator/metrics"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 40s  # <--- 关键：给 Nacos 更多启动时间（默认可能太短）
 
   etcd:
-    image: bitnami/etcd:3.5
+    image: dhi.io/etcd:3
     container_name: im-etcd
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
@@ -95,12 +113,11 @@ services:
       - "2379:2379"
 
   apisix:
-    image: apache/apisix:3.13-debian
+    image: apache/apisix:3.15.0-ubuntu
     container_name: im-apisix
     depends_on:
       - etcd
     ports:
-      - "8080:9080"
       - "9180:9180"
     volumes:
       - ./gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro

@@ -47,7 +47,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
   // 加载聊天室消息
   useEffect(() => {
     if (room) {
-      authenticatedFetch(`http://localhost:8080/api/message/rooms/${room.id}/messages`)
+      authenticatedFetch(`/api/message/rooms/${room.id}/messages`)
       .then(response => response.json())
       .then(data => setMessages(Array.isArray(data) ? data : []));
     }
@@ -61,7 +61,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
     
     try {
       const token = localStorage.getItem('token');
-      socket = new WebSocket(`ws://localhost:8080/ws/connect?token=${token}&user_id=${user.id}`);
+      socket = new WebSocket(`/ws/connect?token=${token}&user_id=${user.id}`);
       
       socket.onopen = () => {
         if (isMounted) {
@@ -136,7 +136,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
   // 发送消息
   const handleSendMessage = async () => {
     if (!newMessage || !room) return;
-    await authenticatedFetch('http://localhost:8080/api/message/send', {
+    await authenticatedFetch('/api/message/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ room_id: room.id, content: newMessage })
@@ -149,7 +149,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
     if (!inviteeUsername || !room) return;
     
     // 首先根据username获取userId
-    authenticatedFetch(`http://localhost:8080/api/user/${inviteeUsername}`)
+    authenticatedFetch(`/api/user/${inviteeUsername}`)
     .then(response => {
       if (!response.ok) {
         throw new Error('User not found');
@@ -158,7 +158,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
     })
     .then(user => {
       // 然后发送邀请
-      return authenticatedFetch('http://localhost:8080/api/group/invitations', {
+      return authenticatedFetch('/api/group/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -320,7 +320,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
                   overflow: 'hidden' 
                 }}>
                   <img 
-                    src={member.avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'} 
+                    src={member.avatar || '/api/storage/static/avatars/default/default1.png'} 
                     alt="Member avatar" 
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
@@ -354,7 +354,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ user, onLogout, authenticatedFetch 
                       overflow: 'hidden' 
                     }}>
                       <img 
-                        src={message.sender?.avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'} 
+                        src={message.sender?.avatar || '/api/storage/static/avatars/default/default1.png'} 
                         alt="User avatar" 
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />

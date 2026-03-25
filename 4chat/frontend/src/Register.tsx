@@ -34,7 +34,7 @@ const Register: React.FC = () => {
       console.log('Sending registration data:', registerData);
       
       // 注册用户
-      const registerResponse = await fetch('http://localhost:8080/api/user/register', {
+      const registerResponse = await fetch('/api/user/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

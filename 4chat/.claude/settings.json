@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//etc/**)",
+      "Read(//mnt/c/Users/**)",
+      "Read(//mnt/c/Users/eeyzs1/**)",
+      "Bash(ls /home/eeyzs1/AI_Generated_Projects/4chat/*.sh)",
+      "Bash(chmod +x /home/eeyzs1/AI_Generated_Projects/4chat/forward-ports.sh)",
+      "Bash(xargs sed:*)"
+    ]
+  }
+}

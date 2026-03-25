@@ -32,7 +32,7 @@ const App: React.FC = () => {
     
     setIsRefreshing(true);
     try {
-      const response = await fetch('http://localhost:8080/api/user/refresh-token', {
+      const response = await fetch('/api/user/refresh-token', {
         method: 'POST',
         credentials: 'include' // 包含cookie
       });
@@ -99,7 +99,7 @@ const App: React.FC = () => {
   // 验证token并获取用户信息
   useEffect(() => {
     if (token) {
-      authenticatedFetch('http://localhost:8080/api/user/me')
+      authenticatedFetch('/api/user/me')
         .then(response => response.json())
         .then(data => setUser(data))
         .catch(() => {
@@ -117,7 +117,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     // 调用登出接口（如果有）
     try {
-      await fetch('http://localhost:8080/api/user/logout', {
+      await fetch('/api/user/logout', {
         method: 'POST',
         credentials: 'include'
       });

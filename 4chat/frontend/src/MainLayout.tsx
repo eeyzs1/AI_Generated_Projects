@@ -71,7 +71,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
     const loadRooms = async () => {
       setIsLoading(true);
       try {
-        const response = await authenticatedFetch('http://localhost:8080/api/group/rooms');
+        const response = await authenticatedFetch('/api/group/rooms');
         const data = await response.json();
         setRooms(Array.isArray(data) ? data : []);
         if (Array.isArray(data) && data.length > 0 && !selectedRoom) {
@@ -92,7 +92,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
   useEffect(() => {
     const loadInvitations = async () => {
       try {
-        const response = await authenticatedFetch('http://localhost:8080/api/group/invitations');
+        const response = await authenticatedFetch('/api/group/invitations');
         const data = await response.json();
         setInvitations(Array.isArray(data) ? data : []);
       } catch (error) {
@@ -108,7 +108,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
     if (selectedRoom) {
       const loadMessages = async () => {
         try {
-          const response = await authenticatedFetch(`http://localhost:8080/api/message/rooms/${selectedRoom.id}/messages`);
+          const response = await authenticatedFetch(`/api/message/rooms/${selectedRoom.id}/messages`);
           const data = await response.json();
           setMessages(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -129,7 +129,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
 
     try {
       const token = localStorage.getItem('token');
-      socket = new WebSocket(`ws://localhost:8080/ws/connect?token=${token}&user_id=${user.id}`);
+      socket = new WebSocket(`/ws/connect?token=${token}&user_id=${user.id}`);
 
       socket.onopen = () => {
         if (isMounted) {
@@ -228,7 +228,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
     }
 
     try {
-      const response = await authenticatedFetch('http://localhost:8080/api/group/rooms', {
+      const response = await authenticatedFetch('/api/group/rooms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -249,7 +249,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
   // 处理邀请
   const handleInvitationAction = async (invitationId: number, action: string) => {
     try {
-      const response = await authenticatedFetch(`http://localhost:8080/api/group/invitations/${invitationId}/action`, {
+      const response = await authenticatedFetch(`/api/group/invitations/${invitationId}/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -261,7 +261,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
       setInvitations(prev => prev.filter(inv => inv.id !== invitationId));
       // 如果接受邀请，重新加载聊天室列表
       if (action === 'accepted') {
-        const response = await authenticatedFetch('http://localhost:8080/api/group/rooms');
+        const response = await authenticatedFetch('/api/group/rooms');
         const roomsData = await response.json();
         setRooms(Array.isArray(roomsData) ? roomsData : []);
         message.success('Invitation accepted');
@@ -275,7 +275,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
   // 发送消息
   const handleSendMessage = async () => {
     if (!newMessage || !selectedRoom) return;
-    await authenticatedFetch('http://localhost:8080/api/message/send', {
+    await authenticatedFetch('/api/message/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ room_id: selectedRoom.id, content: newMessage })
@@ -292,14 +292,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ user, onLogout, authenticatedFe
 
     try {
       // 首先根据username获取userId
-      const userResponse = await authenticatedFetch(`http://localhost:8080/api/user/${inviteeUsername}`);
+      const userResponse = await authenticatedFetch(`/api/user/${inviteeUsername}`);
       if (!userResponse.ok) {
         throw new Error('User not found');
       }
       const inviteeUser = await userResponse.json();
 
       // 然后发送邀请
-      const inviteResponse = await authenticatedFetch('http://localhost:8080/api/group/invitations', {
+      const inviteResponse = await authenticatedFetch('/api/group/invitations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

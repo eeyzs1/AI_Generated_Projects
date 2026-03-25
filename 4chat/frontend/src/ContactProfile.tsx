@@ -37,7 +37,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
       const fetchContactInfo = async () => {
         try {
           setLoading(true);
-          const response = await authenticatedFetch(`http://localhost:8080/api/user/users/${contactId}`);
+          const response = await authenticatedFetch(`/api/user/users/${contactId}`);
           if (response.ok) {
             const data = await response.json();
             setContact({
@@ -64,7 +64,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
 
     try {
       // 先获取用户的所有聊天室
-      const response = await authenticatedFetch('http://localhost:8080/api/group/rooms');
+      const response = await authenticatedFetch('/api/group/rooms');
       if (response.ok) {
         const rooms = await response.json();
         
@@ -85,7 +85,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
           navigate(`/room/${existingRoom.id}`);
         } else {
           // 创建新的双人聊天室
-          const createResponse = await authenticatedFetch('http://localhost:8080/api/group/rooms', {
+          const createResponse = await authenticatedFetch('/api/group/rooms', {
             method: 'POST',
             body: JSON.stringify({
               name: `${user.displayname} & ${contact.displayname}`,
@@ -97,7 +97,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
             const newRoom = await createResponse.json();
             
             // 添加联系人到聊天室
-            await authenticatedFetch(`http://localhost:8080/api/group/rooms/${newRoom.id}/add/${contact.id}`, {
+            await authenticatedFetch(`/api/group/rooms/${newRoom.id}/add/${contact.id}`, {
               method: 'POST'
             });
 
@@ -118,7 +118,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
 
     if (window.confirm('Are you sure you want to remove this contact?')) {
       try {
-        const response = await authenticatedFetch(`http://localhost:8080/api/user/contacts/${contact.id}`, {
+        const response = await authenticatedFetch(`/api/user/contacts/${contact.id}`, {
           method: 'DELETE'
         });
 
@@ -187,7 +187,7 @@ const ContactProfile: React.FC<ContactProfileProps> = ({ user, onLogout, authent
           overflow: 'hidden', 
           border: '3px solid #e0e0e0' 
         }}>
-          <img src={contact.avatar || 'http://localhost:8080/api/storage/static/avatars/default/default1.png'} alt={contact.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={contact.avatar || '/api/storage/static/avatars/default/default1.png'} alt={contact.displayname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '24px' }}>{contact.displayname}</h2>

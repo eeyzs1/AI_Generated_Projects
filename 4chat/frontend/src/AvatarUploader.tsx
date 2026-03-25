@@ -22,11 +22,11 @@ const AvatarUploader: React.FC<AvatarUploaderProps> = ({ onAvatarSelected, onRem
   
   // 默认头像列表
   const defaultAvatars = [
-    'http://localhost:8080/api/storage/static/avatars/default/default1.png',
-    'http://localhost:8080/api/storage/static/avatars/default/default2.png',
-    'http://localhost:8080/api/storage/static/avatars/default/default3.png',
-    'http://localhost:8080/api/storage/static/avatars/default/default4.png',
-    'http://localhost:8080/api/storage/static/avatars/default/default5.png'
+    '/api/storage/static/avatars/default/default1.png',
+    '/api/storage/static/avatars/default/default2.png',
+    '/api/storage/static/avatars/default/default3.png',
+    '/api/storage/static/avatars/default/default4.png',
+    '/api/storage/static/avatars/default/default5.png'
   ];
   
   // 处理默认头像选择
