@@ -697,3 +697,117 @@ kubectl logs -f deployment/user-service
 **Q: K8s 部署后无法访问？**
 
 确认 minikube 正在运行，并用 `minikube ip` 获取正确的 IP 地址。NodePort 端口为前端 30000、网关 30080。
+
+---
+
+## WSL2 环境下的已知问题与解决方案
+
+> 适用于：在 WSL2（非 Docker Desktop）中使用 Docker，Windows 浏览器无法访问服务的情况。
+
+### 问题：Windows 浏览器访问 localhost 超时
+
+**现象：** WSL 内 `curl localhost:3000` 正常，Windows 浏览器访问 `localhost:3000` 超时（ERR_CONNECTION_TIMED_OUT）。
+
+**根本原因：Hairpin NAT 问题**
+
+WSL2 mirror 模式下，Windows 发来的请求源 IP 和目标 IP 都是同一个（如 `192.168.123.50`），Docker 容器回包时内核判断这是异常连接，立即发送 RST 重置。
+
+抓包可以看到：
+```
+客户端 SYN  → 192.168.123.50:3000
+DNAT转发    → 172.18.0.x:3000  
+容器回复    SYN-ACK
+立刻        RST  ← 连接被重置
+```
+
+**解决方案：socat 端口转发**
+
+socat 监听在不同端口（原端口前加 `1`），把流量从 `127.0.0.1` 转发到容器 IP，绕开 hairpin 问题：
+
+```bash
+# 安装 socat
+sudo apt install socat
+
+# 使用项目提供的脚本
+./forward-ports.sh start
+
+# 停止转发
+./forward-ports.sh stop
+```
+
+| 服务 | Windows 访问地址 |
+|------|-----------------|
+| 前端 | http://localhost:13000 |
+| APISIX 网关 | http://localhost:8080（nginx 内部代理） |
+| Nacos 控制台 | http://localhost:18848 |
+| user-service | http://localhost:18001 |
+| group-service | http://localhost:18002 |
+| message-service | http://localhost:18003 |
+| connector-service | http://localhost:18004 |
+| push-service | http://localhost:18005 |
+| storage-service | http://localhost:18006 |
+
+> **注意：** 每次重启 WSL 或重启 Docker 容器后，需要重新运行 `./forward-ports.sh start`。
+
+---
+
+### 问题：APISIX 端口冲突（8080 被占用）
+
+**现象：** socat 无法绑定 `0.0.0.0:8080`，报 `Address already in use`。
+
+**原因：** Linux 内核规定，`0.0.0.0` 绑定会覆盖所有地址包括 `127.0.0.1`，因此即使 Docker 只绑了 `127.0.0.1:8080`，socat 仍无法绑 `0.0.0.0:8080`。
+
+**解决方案：** 前端 nginx 内部代理 `/api/` 和 `/ws/` 到 APISIX，前端代码使用相对路径，Windows 只需访问 `localhost:13000`，无需直接访问 8080。
+
+---
+
+### 问题：APISIX 启动报错
+
+**现象：**
+```
+Error: config.yaml does not contain 'role: data_plane'. Deployment role must be set to 'data_plane' for standalone mode.
+```
+
+**原因：** APISIX 3.x 版本要求在 standalone 模式下显式声明 `role: data_plane`。
+
+**解决方案：** 在 `config/apisix/config.yaml` 中确认包含：
+```yaml
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+```
+
+---
+
+### 问题：connector-service / push-service 启动报 SyntaxError
+
+**现象：**
+```
+File "/usr/local/lib/python3.11/site-packages/jose.py", line 546
+    print decrypt(...)
+SyntaxError: Missing parentheses in call to 'print'
+```
+
+**原因：** 安装了错误的 `jose` 包（Python 2 时代的旧版本），应安装 `python-jose`。
+
+**解决方案：** 确认 `requirements.txt` 中使用的是 `python-jose` 而非 `jose`：
+```
+python-jose[cryptography]
+```
+
+---
+
+### 问题：push-service / message-service 启动报 SQLAlchemy URL 解析错误
+
+**现象：**
+```
+sqlalchemy.exc.ArgumentError: Could not parse SQLAlchemy URL from given URL string
+```
+
+**原因：** `DATABASE_URL` 环境变量未设置或格式错误，`ha_database.py` 在 module 级别调用 `create_engine()` 导致导入时就报错。
+
+**解决方案：** 确认 `.env` 文件中 `DATABASE_URL` 格式正确：
+```
+DATABASE_URL=mysql+pymysql://root:root123@mysql:3306/im_user
+```
