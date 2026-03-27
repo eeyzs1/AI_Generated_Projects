@@ -1,0 +1,144 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/database_provider.dart';
+import '../../../data/models/play_history.dart';
+import '../../../data/models/bookmark.dart';
+import 'package:go_router/go_router.dart';
+
+class HomePage extends ConsumerWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('RFPlayer'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '最近播放',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildRecentPlays(context, ref),
+            const SizedBox(height: 32),
+            const Text(
+              '书签',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildBookmarks(context, ref),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentPlays(BuildContext context, WidgetRef ref) {
+    final historyRepository = ref.watch(historyRepositoryProvider);
+    return StreamBuilder<List<PlayHistory>>(
+      stream: historyRepository.watchHistory(limit: 5),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('加载失败'));
+        }
+        final history = snapshot.data ?? [];
+        if (history.isEmpty) {
+          return const Center(child: Text('暂无播放历史'));
+        }
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: history.length,
+          itemBuilder: (context, index) {
+            final item = history[index];
+            return ListTile(
+              leading: Icon(
+                item.type == MediaType.video ? Icons.video_library : Icons.image,
+                size: 40,
+              ),
+              title: Text(item.displayName),
+              subtitle: Text(item.progressString),
+              onTap: () {
+                if (item.type == MediaType.video) {
+                  GoRouter.of(context).push('/video-player', extra: item.path);
+                } else {
+                  GoRouter.of(context).push('/image-viewer', extra: item.path);
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBookmarks(BuildContext context, WidgetRef ref) {
+    final bookmarkRepository = ref.watch(bookmarkRepositoryProvider);
+    return StreamBuilder<List<Bookmark>>(
+      stream: bookmarkRepository.watchAll(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('加载失败'));
+        }
+        final bookmarks = snapshot.data ?? [];
+        if (bookmarks.isEmpty) {
+          return const Center(child: Text('暂无书签'));
+        }
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: bookmarks.length,
+          itemBuilder: (context, index) {
+            final bookmark = bookmarks[index];
+            return ListTile(
+              leading: const Icon(Icons.bookmark, size: 40),
+              title: Text(bookmark.displayName),
+              onTap: () {
+                // 这里需要根据文件类型决定打开方式
+                // 暂时默认作为视频打开
+                GoRouter.of(context).push('/video-player', extra: bookmark.path);
+              },
+              trailing: IconButton(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('确认删除'),
+                      content: const Text('确定要删除此书签吗？'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('取消'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final bookmarkRepository = ref.read(bookmarkRepositoryProvider);
+                            await bookmarkRepository.deleteById(bookmark.id);
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text('删除'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.delete),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
