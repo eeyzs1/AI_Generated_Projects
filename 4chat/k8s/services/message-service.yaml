@@ -15,6 +15,7 @@ spec:
       containers:
         - name: message-service
           image: localhost:5000/message-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8003
           env:

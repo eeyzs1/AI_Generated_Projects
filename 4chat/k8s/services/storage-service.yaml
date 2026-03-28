@@ -25,6 +25,7 @@ spec:
       containers:
         - name: storage-service
           image: localhost:5000/storage-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8006
           env:

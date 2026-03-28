@@ -15,6 +15,7 @@ spec:
       containers:
         - name: push-service
           image: localhost:5000/push-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8005
           env:

@@ -698,6 +698,42 @@ kubectl logs -f deployment/user-service
 
 确认 minikube 正在运行，并用 `minikube ip` 获取正确的 IP 地址。NodePort 端口为前端 30000、网关 30080。
 
+**WSL 环境下 Windows 浏览器访问：**
+
+```bash
+./k8s/forward-ports.sh start
+```
+
+然后访问 http://localhost:13000
+
+**Q: minikube 中 Kafka 启动失败？**
+
+**现象：** Kafka pod CrashLoopBackOff，日志显示 `port is deprecated`。
+
+**原因：** K8s 自动注入 `KAFKA_PORT` 环境变量（因为有名为 `kafka` 的 Service），导致 Kafka 启动脚本检测到废弃配置而退出。
+
+**解决方案：** 已在 `k8s/middleware/kafka.yaml` 中添加 `enableServiceLinks: false` 禁用自动注入。
+
+**Q: Nacos 启动失败？**
+
+**现象：** Nacos v3 报错 `NACOS_AUTH_TOKEN must be set`。
+
+**解决方案：** 已在 `k8s/middleware/nacos.yaml` 中添加 Base64 编码的 `NACOS_AUTH_TOKEN`，并使用 tcpSocket readiness probe。
+
+**Q: message-service 启动失败？**
+
+**现象：** 报错 `cassandra.UnresolvableContactPoints`。
+
+**原因：** ScyllaDB 未部署。
+
+**解决方案：** 运行 `kubectl apply -f k8s/middleware/scylladb.yaml`，或使用 `./k8s/deploy.sh` 自动部署。
+
+**Q: minikube 无法拉取镜像？**
+
+**现象：** ImagePullBackOff，网络超时。
+
+**解决方案：** deploy.sh 已实现自动回退机制：先尝试 pull，失败则从宿主机 Docker load 镜像。确保宿主机已有相关镜像。
+
 ---
 
 ## WSL2 环境下的已知问题与解决方案

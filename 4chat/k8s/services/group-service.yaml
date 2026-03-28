@@ -15,6 +15,7 @@ spec:
       containers:
         - name: group-service
           image: localhost:5000/group-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8002
           env:

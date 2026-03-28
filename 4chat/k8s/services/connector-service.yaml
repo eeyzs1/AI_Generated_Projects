@@ -15,6 +15,7 @@ spec:
       containers:
         - name: connector-service
           image: localhost:5000/connector-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8004
           env:

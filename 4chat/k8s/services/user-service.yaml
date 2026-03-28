@@ -15,6 +15,7 @@ spec:
       containers:
         - name: user-service
           image: localhost:5000/user-service:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8001
           env:
