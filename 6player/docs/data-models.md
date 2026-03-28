@@ -108,21 +108,31 @@ enum UIStyle {
   adaptive,   // 自动：Android → Material 3，Windows → Fluent
 }
 
+enum AppLanguage {
+  system,     // 跟随系统
+  zh_CN,      // 简体中文
+  en_US,      // 英语
+}
+
 class AppSettings {
   final ThemeMode themeMode;              // 亮/暗/跟随系统
   final UIStyle uiStyle;                  // UI 风格
+  final AppLanguage language;             // 应用语言
   final bool rememberPlaybackPosition;    // 是否记住播放位置（续播开关）
   final int historyMaxItems;              // 历史记录最大条数，默认 100
   final String? defaultOpenPath;          // 文件浏览器默认打开目录
   final bool showHiddenFiles;             // 是否显示隐藏文件，默认 false
+  final double defaultPlaybackSpeed;      // 默认播放速率，默认 1.0
 
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.uiStyle = UIStyle.adaptive,
+    this.language = AppLanguage.system,
     this.rememberPlaybackPosition = true,
     this.historyMaxItems = 100,
     this.defaultOpenPath,
     this.showHiddenFiles = false,
+    this.defaultPlaybackSpeed = 1.0,
   });
 }
 ```

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/localization/app_localizations.dart';
 
 class MaterialShell extends StatelessWidget {
   final Widget child;
@@ -8,28 +9,29 @@ class MaterialShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
     return Scaffold(
       body: child,
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _getCurrentIndex(context),
         onTap: (index) => _navigateTo(context, index),
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: '首页',
+            icon: const Icon(Icons.home),
+            label: localizations.appName,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: '历史',
+            icon: const Icon(Icons.history),
+            label: localizations.history,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.folder),
-            label: '文件',
+            icon: const Icon(Icons.folder),
+            label: localizations.fileBrowser,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: '设置',
+            icon: const Icon(Icons.settings),
+            label: localizations.settings,
           ),
         ],
       ),

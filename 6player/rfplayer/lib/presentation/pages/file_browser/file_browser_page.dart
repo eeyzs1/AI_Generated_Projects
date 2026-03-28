@@ -8,6 +8,7 @@ import '../../../data/models/play_history.dart';
 import '../../../presentation/providers/database_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class FileBrowserPage extends ConsumerStatefulWidget {
   const FileBrowserPage({super.key});
@@ -95,9 +96,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
 
   @override
   Widget build(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('文件浏览器'),
+        title: Text(localizations.fileBrowser),
         actions: [
           IconButton(
             onPressed: _pickFile,
@@ -116,9 +118,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '选择文件',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -127,7 +129,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                   ElevatedButton.icon(
                     onPressed: _pickFile,
                     icon: const Icon(Icons.add),
-                    label: const Text('选择视频或图片文件'),
+                    label: Text('${localizations.playVideo} ${localizations.viewImage}'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
@@ -136,17 +138,17 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  const Text(
-                    '最近播放',
-                    style: TextStyle(
+                  Text(
+                    localizations.recentPlays,
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 16),
                   if (_recentFiles.isEmpty)
-                    const Center(
-                      child: Text('暂无最近播放的文件'),
+                    Center(
+                      child: Text(localizations.noRecentPlays),
                     )
                   else
                     ListView.builder(
@@ -167,19 +169,19 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                               showDialog(
                                 context: context,
                                 builder: (context) => AlertDialog(
-                                  title: const Text('确认删除'),
-                                  content: const Text('确定要从最近播放列表中删除此文件吗？'),
+                                  title: Text(localizations.confirmDelete),
+                                  content: Text(localizations.sureToDelete),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.of(context).pop(),
-                                      child: const Text('取消'),
+                                      child: Text(localizations.cancel),
                                     ),
                                     TextButton(
                                       onPressed: () async {
                                         await _deleteRecentFile(file.path);
                                         Navigator.of(context).pop();
                                       },
-                                      child: const Text('删除'),
+                                      child: Text(localizations.confirm),
                                     ),
                                   ],
                                 ),

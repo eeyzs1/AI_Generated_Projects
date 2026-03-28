@@ -12,6 +12,7 @@ class VideoPlayerController {
   final String path;
   final WidgetRef ref;
   Timer? _positionTimer;
+  bool _disposed = false;
 
   VideoPlayerController(this.path, this.ref)
       : player = Player() {
@@ -69,10 +70,15 @@ class VideoPlayerController {
   }
 
   Future<void> updatePlaybackPosition() async {
+    if (_disposed) return;
+    
     final position = player.state.position;
     final historyRepo = ref.read(historyRepositoryProvider);
+    
+    // 只更新历史记录，不自动重置播放位置
+    // 播放位置的重置由用户操作触发
     await historyRepo.updatePosition(path, position);
-    }
+  }
 
   Future<void> play() async {
     await player.play();
@@ -87,7 +93,21 @@ class VideoPlayerController {
   }
 
   Future<void> setVolume(double volume) async {
+    // 直接使用传入的音量值，已经在调用方处理了范围转换
     await player.setVolume(volume);
+  }
+
+  Future<double> get volume async {
+    // 将0-100范围转换为0-1范围
+    return player.state.volume / 100;
+  }
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    await player.setRate(speed);
+  }
+
+  Future<double> get playbackSpeed async {
+    return player.state.rate;
   }
 
   Future<Duration> get duration async {
@@ -103,6 +123,7 @@ class VideoPlayerController {
   }
 
   void dispose() {
+    _disposed = true;
     _positionTimer?.cancel();
     player.dispose();
   }

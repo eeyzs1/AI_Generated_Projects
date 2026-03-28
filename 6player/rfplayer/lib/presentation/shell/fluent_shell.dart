@@ -1,5 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/localization/app_localizations.dart';
 
 class FluentShell extends StatelessWidget {
   final Widget child;
@@ -8,6 +9,7 @@ class FluentShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
     return NavigationView(
       pane: NavigationPane(
         selected: _getCurrentIndex(context),
@@ -15,25 +17,26 @@ class FluentShell extends StatelessWidget {
         items: [
           PaneItem(
             icon: const Icon(FluentIcons.home),
-            title: const Text('首页'),
+            title: Text(localizations.appName),
             body: child,
           ),
           PaneItem(
             icon: const Icon(FluentIcons.history),
-            title: const Text('历史'),
+            title: Text(localizations.history),
             body: child,
           ),
           PaneItem(
             icon: const Icon(FluentIcons.folder),
-            title: const Text('文件'),
+            title: Text(localizations.fileBrowser),
             body: child,
           ),
           PaneItem(
             icon: const Icon(FluentIcons.settings),
-            title: const Text('设置'),
+            title: Text(localizations.settings),
             body: child,
           ),
         ],
+        displayMode: PaneDisplayMode.compact,
       ),
     );
   }

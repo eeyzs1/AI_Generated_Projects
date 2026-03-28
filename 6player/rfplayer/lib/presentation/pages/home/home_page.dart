@@ -4,31 +4,33 @@ import '../../providers/database_provider.dart';
 import '../../../data/models/play_history.dart';
 import '../../../data/models/bookmark.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final localizations = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RFPlayer'),
+        title: Text(localizations.appName),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '最近播放',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Text(
+              localizations.recentPlays,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _buildRecentPlays(context, ref),
             const SizedBox(height: 32),
-            const Text(
-              '书签',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Text(
+              localizations.bookmarks,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _buildBookmarks(context, ref),
@@ -47,11 +49,13 @@ class HomePage extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('加载失败'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.loadingFailed));
         }
         final history = snapshot.data ?? [];
         if (history.isEmpty) {
-          return const Center(child: Text('暂无播放历史'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.noRecentPlays));
         }
         return ListView.builder(
           shrinkWrap: true,
@@ -89,11 +93,13 @@ class HomePage extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('加载失败'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.loadingFailed));
         }
         final bookmarks = snapshot.data ?? [];
         if (bookmarks.isEmpty) {
-          return const Center(child: Text('暂无书签'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.noBookmarks));
         }
         return ListView.builder(
           shrinkWrap: true,
@@ -111,15 +117,16 @@ class HomePage extends ConsumerWidget {
               },
               trailing: IconButton(
                 onPressed: () {
+                  final localizations = AppLocalizations.of(context)!;
                   showDialog(
                     context: context,
                     builder: (context) => AlertDialog(
-                      title: const Text('确认删除'),
-                      content: const Text('确定要删除此书签吗？'),
+                      title: Text(localizations.confirmDelete),
+                      content: Text(localizations.sureToDelete),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('取消'),
+                          child: Text(localizations.cancel),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -127,7 +134,7 @@ class HomePage extends ConsumerWidget {
                             await bookmarkRepository.deleteById(bookmark.id);
                             Navigator.of(context).pop();
                           },
-                          child: const Text('删除'),
+                          child: Text(localizations.confirm),
                         ),
                       ],
                     ),

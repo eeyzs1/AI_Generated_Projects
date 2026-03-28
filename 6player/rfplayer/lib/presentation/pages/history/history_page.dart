@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/database_provider.dart';
 import '../../../data/models/play_history.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -16,9 +17,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('最近播放'),
+        title: Text(localizations.history),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),
@@ -42,11 +44,13 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text('加载失败'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.loadingFailed));
         }
         final history = snapshot.data ?? [];
         if (history.isEmpty) {
-          return const Center(child: Text('暂无播放历史'));
+          final localizations = AppLocalizations.of(context)!;
+          return Center(child: Text(localizations.noRecentPlays));
         }
         return ListView.builder(
           itemCount: history.length,
@@ -93,15 +97,16 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   void _showClearHistoryDialog(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清空历史记录'),
-        content: const Text('确定要清空所有播放历史吗？'),
+        title: Text(localizations.clearAll),
+        content: Text(localizations.sureToClearAll),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(localizations.cancel),
           ),
           TextButton(
             onPressed: () async {
@@ -111,7 +116,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 _refreshKey++;
               });
             },
-            child: const Text('确定'),
+            child: Text(localizations.confirm),
           ),
         ],
       ),

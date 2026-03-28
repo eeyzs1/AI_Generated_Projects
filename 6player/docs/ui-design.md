@@ -213,8 +213,10 @@ SettingsPage (ConsumerWidget)
         ├── SettingsSection("外观")
         │   ├── ThemeSelector
         │   │   └── SegmentedButton (system / light / dark)
-        │   └── UIStyleSelector
-        │       └── SegmentedButton (Material 3 / Fluent / 自适应)
+        │   ├── UIStyleSelector
+        │   │   └── SegmentedButton (Material 3 / Fluent / 自适应)
+        │   └── LanguageSelector
+        │       └── SegmentedButton (跟随系统 / 简体中文 / English)
         ├── SettingsSection("播放")
         │   ├── SwitchListTile("记住播放位置", rememberPlaybackPosition)
         │   └── ListTile("历史记录数量", trailing: Text("${historyMaxItems}条"))
@@ -260,7 +262,11 @@ VideoPlayerPage (ConsumerWidget)
                                 ├── IconButton(play_arrow / pause)
                                 ├── IconButton(skip_next)
                                 ├── VolumeButton
-                                └── FullscreenButton
+                                ├── SpeedControl
+                                │   ├── DropdownButton(固定档位)
+                                │   ├── Slider(0.25-4.0, 0.01精度)
+                                │   └── TextField(1.00x)
+                                └── AppBarVisibilityButton
 ```
 
 ### PlayerState
@@ -272,8 +278,8 @@ class PlayerState {
   final Duration position;
   final Duration duration;
   final double volume;          // 0.0 ~ 1.0
-  final double playbackSpeed;   // 0.5 ~ 2.0
-  final bool isFullscreen;
+  final double playbackSpeed;   // 0.25 ~ 4.0
+  final bool isAppBarVisible;
   final String? currentPath;
   final String? errorMessage;
 }
