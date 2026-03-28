@@ -30,12 +30,19 @@ spec:
               value: standalone
             - name: PREFER_HOST_MODE
               value: hostname
+            - name: NACOS_AUTH_ENABLE
+              value: "false"
+            - name: NACOS_AUTH_TOKEN
+              value: "U2VjcmV0S2V5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5"
+            - name: NACOS_AUTH_IDENTITY_KEY
+              value: nacosDevIdentityKey2026
+            - name: NACOS_AUTH_IDENTITY_VALUE
+              value: nacosDevSecretValue888
           ports:
             - containerPort: 8848
             - containerPort: 9848
           readinessProbe:
-            httpGet:
-              path: /nacos/v1/console/health/readiness
+            tcpSocket:
               port: 8848
             initialDelaySeconds: 30
             periodSeconds: 10

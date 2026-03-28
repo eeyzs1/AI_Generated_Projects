@@ -10,8 +10,8 @@ data:
       config_center: yaml
 
     deployment:
-      role: traditional
-      role_traditional:
+      role: data_plane
+      role_data_plane:
         config_provider: yaml
   apisix.yaml: |
     routes:
@@ -92,6 +92,7 @@ spec:
       containers:
         - name: apisix
           image: apache/apisix:3.15.0-ubuntu
+          imagePullPolicy: Never
           env:
             - name: APISIX_STAND_ALONE
               value: "true"
@@ -105,8 +106,7 @@ spec:
               mountPath: /usr/local/apisix/conf/apisix.yaml
               subPath: apisix.yaml
           readinessProbe:
-            httpGet:
-              path: /apisix/status
+            tcpSocket:
               port: 9080
             initialDelaySeconds: 15
             periodSeconds: 10
