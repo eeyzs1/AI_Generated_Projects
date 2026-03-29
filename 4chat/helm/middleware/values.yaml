@@ -1,0 +1,29 @@
+mysql:
+  enabled: true
+  image: mysql:8.4
+  rootPassword: root123
+  storage: 5Gi
+
+redis:
+  enabled: true
+  image: redis:8-alpine
+
+kafka:
+  enabled: true
+  zookeeperImage: confluentinc/cp-zookeeper:7.9.6
+  image: confluentinc/cp-kafka:7.9.6
+
+nacos:
+  enabled: true
+  image: nacos/nacos-server:v3.1.1-slim
+  storage: 1Gi
+  authToken: "U2VjcmV0S2V5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5"
+  identityKey: nacosDevIdentityKey2026
+  identityValue: nacosDevSecretValue888
+
+scylladb:
+  enabled: true
+  image: scylladb/scylla:6.2
+  storage: 5Gi
+  smp: "1"
+  memory: 512M

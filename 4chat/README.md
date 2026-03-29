@@ -14,6 +14,7 @@
 - [方案一：Docker Compose 本地全栈](#方案一docker-compose-本地全栈)
 - [方案二：Docker Compose 云服务中间件](#方案二docker-compose-云服务中间件)
 - [方案三：Kubernetes 本地 minikube](#方案三kubernetes-本地-minikube)
+- [方案三B：Kubernetes Helm 部署](#方案三bkubernetes-helm-部署)
 - [方案四：Kubernetes 云服务中间件](#方案四kubernetes-云服务中间件)
 - [使用说明](#使用说明)
 - [常见问题](#常见问题)
@@ -353,7 +354,12 @@ services/common/
 │   ├── services/          # 6个微服务 + 前端 K8s 配置
 │   ├── gateway/           # APISIX K8s 配置
 │   ├── overlays/cloud/    # Kustomize 云服务中间件 overlay
-│   └── deploy.sh          # 一键部署脚本
+│   ├── deploy.sh          # kubectl 一键部署脚本
+│   └── helm-deploy.sh     # Helm 一键部署脚本
+├── helm/
+│   ├── middleware/        # Helm chart：中间件
+│   ├── services/          # Helm chart：业务服务 + 网关
+│   └── 4chat/             # Helm umbrella chart（依赖上述两个）
 ├── docker-compose.yml         # Docker 本地全栈
 ├── docker-compose.cloud.yml   # Docker 云服务中间件
 ├── .env.example               # 环境变量配置示例
@@ -368,7 +374,8 @@ services/common/
 |------|--------|------|----------|
 | Docker Compose 本地全栈 | 本地 Docker | 本地 build | 开发 / 快速体验 |
 | Docker Compose 云服务 | 云服务（RDS/ElastiCache/MSK） | 本地 build | 生产（小规模） |
-| K8s 本地 minikube | 本地 K8s | 本地 registry 或 Docker Hub | 学习 K8s / 测试 |
+| K8s 本地 minikube（kubectl） | 本地 K8s | 本地 registry 或 Docker Hub | 学习 K8s / 测试 |
+| K8s 本地 minikube（Helm） | 本地 K8s | 本地 registry 或 Docker Hub | 学习 Helm / 测试 |
 | K8s 云服务中间件 | 云服务 | Docker Hub | 生产（K8s 集群） |
 
 ---
@@ -452,6 +459,22 @@ API 网关:  http://<minikube-ip>:30080
 
 用 `minikube ip` 查看实际 IP。
 
+**其他命令：**
+
+```bash
+# 滚动重启所有服务（不重新构建镜像）
+./k8s/deploy.sh --restart
+
+# 智能更新（只重建有代码变更的服务）
+./k8s/deploy.sh --update
+
+# 只更新某个服务
+./k8s/deploy.sh --update user-service
+
+# 卸载
+./k8s/deploy.sh --uninstall
+```
+
 手动逐步部署：
 
 ```bash
@@ -461,6 +484,92 @@ kubectl wait --for=condition=ready pod -l app=kafka --timeout=180s
 kubectl apply -f k8s/gateway/
 kubectl apply -f k8s/services/
 kubectl get pods
+```
+
+清理：
+
+```bash
+./k8s/deploy.sh --uninstall
+```
+
+---
+
+## 方案三B：Kubernetes Helm 部署
+
+使用 Helm 包管理器部署，提供更灵活的配置管理和版本控制。
+
+**前置要求：**
+- 安装 [Helm v3](https://helm.sh/docs/intro/install/)
+- 安装 [minikube](https://minikube.sigs.k8s.io/docs/start/) 和 [kubectl](https://kubernetes.io/docs/tasks/tools/)
+
+**一键部署（推荐）：**
+
+```bash
+./k8s/helm-deploy.sh
+```
+
+**其他命令：**
+
+```bash
+# 使用 Docker Hub
+./k8s/helm-deploy.sh --registry dockerhub --hub-user <你的DockerHub用户名>
+
+# 云服务中间件
+./k8s/helm-deploy.sh --cloud
+
+# 只部署中间件
+./k8s/helm-deploy.sh --only middleware
+
+# 只部署业务服务
+./k8s/helm-deploy.sh --only services
+
+# 滚动重启
+./k8s/helm-deploy.sh --restart
+
+# 智能更新
+./k8s/helm-deploy.sh --update
+
+# 卸载
+./k8s/helm-deploy.sh --uninstall
+```
+
+**手动 Helm 操作：**
+
+```bash
+# 独立部署中间件
+helm upgrade --install 4chat-middleware helm/middleware
+
+# 独立部署业务服务
+helm upgrade --install 4chat-services helm/services
+
+# 全量部署（umbrella chart）
+helm dependency update helm/4chat
+helm upgrade --install 4chat helm/4chat
+
+# 查看 releases
+helm list
+
+# 卸载
+helm uninstall 4chat
+```
+
+**Helm Chart 结构：**
+
+```
+helm/
+├── middleware/     # 独立 chart：MySQL/Redis/Kafka/Nacos/ScyllaDB
+├── services/       # 独立 chart：6个微服务 + 前端 + APISIX
+└── 4chat/          # Umbrella chart：依赖上述两个 chart
+```
+
+**切换部署方式：**
+
+```bash
+# kubectl → Helm（数据不丢失）
+./k8s/helm-deploy.sh  # 自动认领 PVC
+
+# Helm → kubectl（数据不丢失）
+./k8s/deploy.sh       # 自动移除 Helm 标记
 ```
 
 清理：

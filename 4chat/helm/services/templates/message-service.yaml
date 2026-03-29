@@ -1,0 +1,69 @@
+{{- if .Values.messageService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-service
+  labels:
+    app: message-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: message-service
+  replicas: {{ .Values.messageService.replicas }}
+  template:
+    metadata:
+      labels:
+        app: message-service
+    spec:
+      containers:
+        - name: message-service
+          image: {{ include "services.image" (list . .Values.messageService.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8003
+          env:
+            - name: SCYLLA_HOSTS
+              value: {{ .Values.global.scylla.host }}
+            - name: SCYLLA_PORT
+              value: {{ .Values.global.scylla.port | quote }}
+            - name: SCYLLA_KEYSPACE
+              value: im_message
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.global.kafka.bootstrapServers }}
+            - name: NACOS_HOST
+              value: {{ .Values.global.nacos.host }}
+            - name: NACOS_PORT
+              value: {{ .Values.global.nacos.port | quote }}
+            - name: SERVICE_HOST
+              value: message-service
+            - name: SERVICE_PORT
+              value: "8003"
+            - name: USER_SERVICE_URL
+              value: http://user-service:8001
+            - name: GROUP_SERVICE_URL
+              value: http://group-service:8002
+            - name: SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+            - name: ACCESS_SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-service
+  labels:
+    app: message-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: message-service
+  ports:
+    - port: 8003
+{{- end }}
