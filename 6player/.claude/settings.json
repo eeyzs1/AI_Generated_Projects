@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter create:*)"
+      "Bash(flutter create:*)",
+      "Bash(flutter build:*)",
+      "Bash(\"E:\\\\Microsoft Visual Studio\\\\18\\\\BuildTools\\\\Common7\\\\IDE\\\\CommonExtensions\\\\Microsoft\\\\CMake\\\\CMake\\\\bin\\\\cmake.exe\" -DBUILD_TYPE=Debug -P cmake_install.cmake)",
+      "Read(//e/flutter_pub_cache/hosted/pub.dev/fvp-0.1.0/windows/mdk-sdk/bin/x64/**)",
+      "Read(//e/flutter_pub_cache/hosted/pub.dev/fvp-0.35.2/**)",
+      "Read(//e/flutter_pub_cache/hosted/pub.dev/file_picker-8.3.7/android/**)",
+      "Bash(ls e:/AI_Generated_Projects/6player/rfplayer/android/*.gradle*)"
     ]
   }
 }

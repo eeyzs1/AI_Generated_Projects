@@ -233,7 +233,7 @@ abstract class BookmarkDao {
 OpenMediaUseCase.execute(path)
     │
     ├─► PlayerService.open(path)
-    │       └─► media_kit Player.open(Media(path))
+    │       └─► fvp Player.open(Media(path))
     │
     ├─► HistoryRepository.upsert(PlayHistory)
     │       └─► HistoryDao.upsert()  →  SQLite

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:video_player/video_player.dart';
+
 import 'video_player_controller.dart';
 import 'speed_control.dart';
 import '../../../data/models/bookmark.dart';
@@ -22,7 +23,7 @@ class VideoPlayerPage extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
-  late VideoPlayerController _controller;
+  late MyVideoPlayerController _controller;
   bool _isInitialized = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -34,24 +35,28 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   bool _isAppBarVisible = true;
   late FocusNode _focusNode;
   late FocusAttachment _focusAttachment;
-  
+
   // 操作队列，确保一次只执行一个播放器操作
   bool _isProcessing = false;
   final Queue<Future<void> Function()> _operationQueue = Queue();
+
+  // 进度条交互状态
+  bool _isSliderDragging = false;
+  bool _wasPlayingBeforeDrag = false;
+  // 播放完成状态
+  bool _isCompleted = false;
 
   @override
   void initState() {
     super.initState();
     _focusNode = FocusNode(debugLabel: 'VideoPlayerFocusNode');
     _focusAttachment = _focusNode.attach(context, onKey: (node, event) {
-      // 处理键盘事件，确保所有键盘事件都被当前页面捕获
       _handleKey(event);
       return KeyEventResult.handled;
     });
-    _controller = VideoPlayerController(widget.path, ref);
+    _controller = MyVideoPlayerController(widget.path, ref);
     _initializePlayer();
-    
-    // 确保页面获得焦点
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _focusNode.requestFocus();
@@ -61,14 +66,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   }
 
   Future<void> _initializePlayer() async {
-    // 从应用设置中加载默认播放速率
     final settings = ref.read(settingsProvider);
     _playbackSpeed = settings.defaultPlaybackSpeed;
-    
+
     await _controller.initialize();
-    // 设置初始播放速率
-    await _controller.setPlaybackSpeed(_playbackSpeed);
-    
+    _controller.setPlaybackSpeed(_playbackSpeed);
+
     if (mounted) {
       setState(() {
         _isInitialized = true;
@@ -80,24 +83,26 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   Future<void> _updatePlayerState() async {
     while (mounted) {
       try {
-        final position = await _controller.position;
-        final duration = await _controller.duration;
-        final isPlaying = await _controller.isPlaying;
-        final playbackSpeed = await _controller.playbackSpeed;
-        
-        setState(() {
-          _position = position;
-          _duration = duration;
-          _isPlaying = isPlaying;
-          _playbackSpeed = playbackSpeed;
-          // 不更新音量，避免与手动调节冲突
-        });
+        if (!_isSliderDragging) {
+          final position = _controller.position;
+          final duration = _controller.duration;
+          final isPlaying = _controller.isPlaying;
+          final completed = duration.inMilliseconds > 0 &&
+              position.inMilliseconds >= duration.inMilliseconds * 0.99 &&
+              !isPlaying;
+
+          setState(() {
+            _position = position;
+            _duration = duration;
+            _isPlaying = isPlaying;
+            _isCompleted = completed;
+          });
+        }
       } catch (e) {
-        // 忽略错误，避免因为播放器状态问题导致崩溃
-        print('Error updating player state: $e');
+        debugPrint('Error updating player state: $e');
       }
-      
-      await Future.delayed(const Duration(milliseconds: 100));
+
+      await Future.delayed(const Duration(milliseconds: 300));
     }
   }
 
@@ -108,30 +113,25 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     _controller.dispose();
     super.dispose();
   }
-  
-  // 处理操作队列
+
+  // 操作队列处理
   Future<void> _processQueue() async {
     if (!mounted || _isProcessing || _operationQueue.isEmpty) return;
-    
+
     _isProcessing = true;
-    
     final operation = _operationQueue.removeFirst();
     try {
-      if (mounted) {
-        await operation();
-      }
+      if (mounted) await operation();
     } catch (e) {
-      print('Error processing operation: $e');
+      debugPrint('Error processing operation: $e');
     } finally {
       if (mounted) {
         _isProcessing = false;
-        // 处理下一个操作
         _processQueue();
       }
     }
   }
-  
-  // 添加操作到队列
+
   void _queueOperation(Future<void> Function() operation) {
     if (!mounted) return;
     _operationQueue.add(operation);
@@ -148,7 +148,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       sortOrder: 0,
     );
     await bookmarkRepository.insert(bookmark);
-    // 显示提示消息
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -167,79 +167,101 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   void _togglePlayPause() {
     _queueOperation(() async {
       if (!mounted) return;
-      
-      // 检查是否播放完成（位置接近或等于总时长）
-      bool isCompleted = _duration.inMilliseconds > 0 && 
-                        _position.inMilliseconds >= _duration.inMilliseconds * 0.99;
-      
-      // 无论当前状态如何，只要视频已完成，按播放键就从头开始
+
+      final isCompleted = _duration.inMilliseconds > 0 &&
+          _position.inMilliseconds >= _duration.inMilliseconds * 0.99;
+
       if (isCompleted) {
-        // 重置到开始位置并播放
-        await _controller.seek(Duration.zero);
-        if (mounted) {
-          await _controller.play();
-        }
+        _controller.seek(Duration.zero);
+        if (mounted) _controller.play();
       } else if (_isPlaying) {
-        // 正在播放且未完成，执行暂停
-        if (mounted) {
-          await _controller.pause();
-        }
+        if (mounted) _controller.pause();
       } else {
-        // 暂停状态且未完成，执行播放
-        if (mounted) {
-          await _controller.play();
-        }
+        if (mounted) _controller.play();
       }
     });
   }
 
-  void _handleSpeedChange(double speed) {
-    _queueOperation(() async {
-      if (!mounted) return;
-      
-      await _controller.setPlaybackSpeed(speed);
-      if (mounted) {
-        setState(() {
-          _playbackSpeed = speed;
-        });
-      }
-      
-      // 更新应用设置中的默认播放速率，实现全局记忆
-      if (mounted) {
-        final settings = ref.read(settingsProvider);
-        await ref.read(settingsProvider.notifier).update(
-          settings.copyWith(defaultPlaybackSpeed: speed)
-        );
-      }
-    });
+  // ── 进度条回调 ────────────────────────────────────────────────
+
+  void _onSliderChangeStart(double value) {
+    _wasPlayingBeforeDrag = _isPlaying;
+    _isSliderDragging = true;
+    if (_isPlaying) {
+      _controller.pause();
+      setState(() { _isPlaying = false; });
+    }
   }
+
+  void _onSliderChanged(double value) {
+    if (!mounted || !_isSliderDragging) return;
+    final newPosition = Duration(
+      milliseconds: (value * _duration.inMilliseconds).toInt(),
+    );
+    setState(() { _position = newPosition; });
+  }
+
+  Future<void> _onSliderChangeEnd(double value) async {
+    if (!mounted) return;
+    final targetPosition = Duration(
+      milliseconds: (value * _duration.inMilliseconds).toInt(),
+    );
+
+    _isSliderDragging = false;
+    setState(() {
+      _position = targetPosition;
+      _isPlaying = _wasPlayingBeforeDrag;
+    });
+
+    _controller.seek(targetPosition);
+    if (_wasPlayingBeforeDrag) {
+      _controller.play();
+    }
+  }
+
+  // ── 倍速回调 ─────────────────────────────────────────────────
+
+  /// 点击档位或键盘快捷键触发，属于明确的最终值，直接持久化
+  void _handleSpeedChangeFinal(double speed) {
+    if (!mounted) return;
+    _controller.setPlaybackSpeed(speed);
+    setState(() {
+      _playbackSpeed = speed;
+    });
+    _saveSpeedSetting(speed);
+  }
+
+  Future<void> _saveSpeedSetting(double speed) async {
+    if (!mounted) return;
+    try {
+      final settings = ref.read(settingsProvider);
+      await ref.read(settingsProvider.notifier).update(
+            settings.copyWith(defaultPlaybackSpeed: speed),
+          );
+    } catch (e) {
+      debugPrint('Error saving playback speed: $e');
+    }
+  }
+
+  // ── 音量回调 ─────────────────────────────────────────────────
 
   void _handleVolumeChange(double volume) {
-    _queueOperation(() async {
-      if (!mounted) return;
-      
-      // 确保音量值在0-100范围内
-      final clampedVolume = volume.clamp(0.0, 100.0);
-      if (mounted) {
-        await _controller.setVolume(clampedVolume);
-        if (mounted) {
-          setState(() {
-            _volume = clampedVolume / 100.0; // 存储为0-1范围
-          });
-        }
-      }
-    });
+    final clampedVolume = volume.clamp(0.0, 1.0);
+    _controller.setVolume(clampedVolume);
+    if (mounted) {
+      setState(() {
+        _volume = clampedVolume;
+      });
+    }
   }
 
   void _toggleAppBar() {
     if (!mounted) return;
-    
     setState(() {
       _isAppBarVisible = !_isAppBarVisible;
     });
   }
 
-  // 显示/隐藏音量调节条
   void _toggleVolumeControl() {
     if (mounted) {
       setState(() {
@@ -248,104 +270,77 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     }
   }
 
-  // 处理键盘快捷键
+  // ── 键盘快捷键 ────────────────────────────────────────────────
+
   void _handleKey(RawKeyEvent event) {
-    if (event is RawKeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.space) {
-        // Space: 播放/暂停
-        _togglePlayPause();
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        // 左方向键：快退，使用视频总时长的5%
-        if (_duration.inMilliseconds > 0) {
-          // 计算快退时间：总时长的5%，最小1秒，最大30秒
-          int seekMs = (_duration.inMilliseconds * 0.05).round();
-          seekMs = seekMs.clamp(1000, 30000); // 限制在1-30秒之间
-          var newPosition = _position - Duration(milliseconds: seekMs);
-          if (newPosition < Duration.zero) {
-            newPosition = Duration.zero;
-          }
-          _queueOperation(() async {
-            if (mounted) {
-              await _controller.seek(newPosition);
-            }
-          });
-        }
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        // 右方向键：快进，使用视频总时长的5%
-        if (_duration.inMilliseconds > 0) {
-          // 计算快进时间：总时长的5%，最小1秒，最大30秒
-          int seekMs = (_duration.inMilliseconds * 0.05).round();
-          seekMs = seekMs.clamp(1000, 30000); // 限制在1-30秒之间
-          var newPosition = _position + Duration(milliseconds: seekMs);
-          if (newPosition >= _duration) {
-            // 如果快进后到达或超过视频末尾，停在视频终止处
-            newPosition = _duration;
-          }
-          _queueOperation(() async {
-            if (mounted) {
-              await _controller.seek(newPosition);
-            }
-          });
-        }
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        // 上方向键：音量+10%
-        final newVolume = (_volume * 100 + 10).clamp(0.0, 100.0);
-        _handleVolumeChange(newVolume);
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        // 下方向键：音量-10%
-        final newVolume = (_volume * 100 - 10).clamp(0.0, 100.0);
-        _handleVolumeChange(newVolume);
-      } else if (event.logicalKey == LogicalKeyboardKey.equal) {
-        // +：增加播放速率0.1x
-        final newSpeed = (_playbackSpeed + 0.1).clamp(0.25, 4.0);
-        _handleSpeedChange(newSpeed);
-      } else if (event.logicalKey == LogicalKeyboardKey.minus) {
-        // -：减少播放速率0.1x
-        final newSpeed = (_playbackSpeed - 0.1).clamp(0.25, 4.0);
-        _handleSpeedChange(newSpeed);
-      } else if (event.logicalKey == LogicalKeyboardKey.digit0) {
-        // 0：重置播放速率为1.0x
-        _handleSpeedChange(1.0);
-      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-        // Esc：显示AppBar
-        if (!_isAppBarVisible) {
-          setState(() {
-            _isAppBarVisible = true;
-          });
-        }
+    if (event is! RawKeyDownEvent) return;
+
+    if (event.logicalKey == LogicalKeyboardKey.space) {
+      _togglePlayPause();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (_duration.inMilliseconds > 0) {
+        int seekMs = (_duration.inMilliseconds * 0.05).round().clamp(1000, 30000);
+        final newMs = (_position.inMilliseconds - seekMs).clamp(0, _duration.inMilliseconds);
+        final newPosition = Duration(milliseconds: newMs);
+        _queueOperation(() async {
+          if (mounted) _controller.seek(newPosition);
+        });
       }
-      
-      // 确保焦点保持在当前页面
-      if (mounted) {
-        _focusNode.requestFocus();
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      if (_duration.inMilliseconds > 0) {
+        int seekMs = (_duration.inMilliseconds * 0.05).round().clamp(1000, 30000);
+        final newMs = (_position.inMilliseconds + seekMs).clamp(0, _duration.inMilliseconds);
+        final newPosition = Duration(milliseconds: newMs);
+        _queueOperation(() async {
+          if (mounted) _controller.seek(newPosition);
+        });
+      }
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _handleVolumeChange(_volume + 0.1);
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _handleVolumeChange(_volume - 0.1);
+    } else if (event.logicalKey == LogicalKeyboardKey.equal) {
+      _handleSpeedChangeFinal((_playbackSpeed + 0.1).clamp(0.25, 4.0));
+    } else if (event.logicalKey == LogicalKeyboardKey.minus) {
+      _handleSpeedChangeFinal((_playbackSpeed - 0.1).clamp(0.25, 4.0));
+    } else if (event.logicalKey == LogicalKeyboardKey.digit0) {
+      _handleSpeedChangeFinal(1.0);
+    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (!_isAppBarVisible) {
+        setState(() {
+          _isAppBarVisible = true;
+        });
       }
     }
+
+    if (mounted) _focusNode.requestFocus();
   }
+
+  // ── Build ─────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: _isAppBarVisible ? AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          p.basename(widget.path),
-          style: const TextStyle(color: Colors.white),
-        ),
-        leading: IconButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-          icon: const Icon(Icons.arrow_back),
-        ),
-      ) : null,
+      appBar: _isAppBarVisible
+          ? AppBar(
+              backgroundColor: Colors.black,
+              iconTheme: const IconThemeData(color: Colors.white),
+              title: Text(
+                p.basename(widget.path),
+                style: const TextStyle(color: Colors.white),
+              ),
+              leading: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back),
+              ),
+            )
+          : null,
       body: Stack(
         children: [
-          // 视频组件，在全屏模式下填满整个屏幕
+          // 视频画面
           GestureDetector(
             onTap: () {
-              // 当AppBar隐藏时，点击屏幕显示AppBar
               if (!_isAppBarVisible) {
                 setState(() {
                   _isAppBarVisible = true;
@@ -354,23 +349,19 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
             },
             child: SizedBox.expand(
               child: _isInitialized
-                  ? Video(
-                      controller: _controller.videoController,
-                      controls: NoVideoControls,
-                    )
+                  ? VideoPlayer(_controller.controller)
                   : const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.blue,
-                      ),
+                      child: CircularProgressIndicator(color: Colors.blue),
                     ),
             ),
           ),
-          
-          // 控制栏，与AppBar的显示状态同步
-          if (_isAppBarVisible) Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
+
+          // 底部控制栏
+          if (_isAppBarVisible)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
               child: Container(
                 color: Colors.black,
                 padding: const EdgeInsets.all(16.0),
@@ -386,19 +377,13 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                         Expanded(
                           child: Slider(
                             value: _duration.inMilliseconds > 0
-                                ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
-                                : 0,
-                            onChanged: (value) {
-                              final newPosition = Duration(
-                                milliseconds: (value * _duration.inMilliseconds).toInt(),
-                              );
-                              _controller.seek(newPosition);
-                              if (mounted) {
-                                setState(() {
-                                  _position = newPosition;
-                                });
-                              }
-                            },
+                                ? (_position.inMilliseconds /
+                                        _duration.inMilliseconds)
+                                    .clamp(0.0, 1.0)
+                                : 0.0,
+                            onChangeStart: _onSliderChangeStart,
+                            onChanged: _onSliderChanged,
+                            onChangeEnd: _onSliderChangeEnd,
                             activeColor: Colors.blue,
                             inactiveColor: Colors.grey[700],
                           ),
@@ -409,151 +394,147 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                         ),
                       ],
                     ),
-                    // 控制按钮
-                    Stack(
+                    // 控制按钮行
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
+                        IconButton(
+                          icon: const Icon(Icons.skip_previous,
+                              color: Colors.white),
+                          onPressed: () => _focusNode.requestFocus(),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _isCompleted
+                                ? Icons.replay
+                                : (_isPlaying ? Icons.pause : Icons.play_arrow),
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                          onPressed: () {
+                            _focusNode.requestFocus();
+                            _togglePlayPause();
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.skip_next,
+                              color: Colors.white),
+                          onPressed: () => _focusNode.requestFocus(),
+                        ),
+                        // 音量控制
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.skip_previous, color: Colors.white),
-                              onPressed: () {
-                                _focusNode.requestFocus();
-                              },
-                            ),
-                            IconButton(
                               icon: Icon(
-                                _isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: Colors.white,
-                                size: 32,
-                              ),
-                              onPressed: () {
-                                _focusNode.requestFocus();
-                                _togglePlayPause();
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.skip_next, color: Colors.white),
-                              onPressed: () {
-                                _focusNode.requestFocus();
-                              },
-                            ),
-                            // 音量控制
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    _volume == 0 ? Icons.volume_mute : 
-                                    _volume < 0.5 ? Icons.volume_down : 
-                                    Icons.volume_up,
-                                    color: Colors.white,
-                                  ),
-                                  onPressed: () {
-                                    _focusNode.requestFocus();
-                                    _toggleVolumeControl();
-                                  },
-                                ),
-                                // 显示当前音量值
-                                Text(
-                                  '${(_volume * 100).round()}%',
-                                  style: const TextStyle(color: Colors.white),
-                                ),
-                              ],
-                            ),
-                            // 播放速率控制按钮
-                            ElevatedButton(
-                              onPressed: () {
-                                _focusNode.requestFocus();
-                                if (mounted) {
-                                  setState(() {
-                                    _showSpeedControl = !_showSpeedControl;
-                                  });
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey[800],
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text('${_playbackSpeed.toStringAsFixed(2)}x'),
-                            ),
-                            // 隐藏/显示AppBar
-                            IconButton(
-                              icon: Icon(
-                                _isAppBarVisible ? Icons.visibility_off : Icons.visibility,
+                                _volume == 0
+                                    ? Icons.volume_mute
+                                    : _volume < 0.5
+                                        ? Icons.volume_down
+                                        : Icons.volume_up,
                                 color: Colors.white,
                               ),
                               onPressed: () {
                                 _focusNode.requestFocus();
-                                _toggleAppBar();
+                                _toggleVolumeControl();
                               },
+                            ),
+                            Text(
+                              '${(_volume * 100).round()}%',
+                              style: const TextStyle(color: Colors.white),
                             ),
                           ],
                         ),
+                        // 倍速按钮
+                        ElevatedButton(
+                          onPressed: () {
+                            _focusNode.requestFocus();
+                            if (mounted) {
+                              setState(() {
+                                _showSpeedControl = !_showSpeedControl;
+                              });
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[800],
+                            foregroundColor: Colors.white,
+                          ),
+                          child: Text('${_playbackSpeed.toStringAsFixed(2)}x'),
+                        ),
+                        // 隐藏/显示控制栏
+                        IconButton(
+                          icon: Icon(
+                            _isAppBarVisible
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            _focusNode.requestFocus();
+                            _toggleAppBar();
+                          },
+                        ),
                       ],
                     ),
-                    // 播放速率控制组件
+                    // 倍速控制面板
                     if (_showSpeedControl)
                       SpeedControl(
                         currentSpeed: _playbackSpeed,
-                        onSpeedChanged: _handleSpeedChange,
+                        controller: _controller,
+                        onSpeedChanged: (speed) {
+                          if (mounted) {
+                            setState(() {
+                              _playbackSpeed = speed;
+                            });
+                          }
+                        },
+                        onSpeedChangeFinal: _handleSpeedChangeFinal,
                       ),
                   ],
                 ),
               ),
             ),
-          
+
           // 音量调节条
-          Visibility(
-            visible: _showVolumeControl,
-            child: Stack(
+          if (_showVolumeControl)
+            Stack(
               children: [
-                // 全屏半透明遮罩，用于捕获点击事件
+                // 背景遮罩，点击关闭
                 GestureDetector(
-                  onTap: () {
-                    // 点击其他位置关闭音量调节条
-                    setState(() {
-                      _showVolumeControl = false;
-                    });
-                  },
+                  onTap: () => setState(() => _showVolumeControl = false),
                   child: Container(
-                    color: Colors.black.withOpacity(0.01), // 使用半透明颜色，确保能捕获点击事件
+                    color: Colors.black.withOpacity(0.01),
                     width: MediaQuery.of(context).size.width,
                     height: MediaQuery.of(context).size.height,
                   ),
                 ),
-                // 音量调节条
+                // 垂直音量滑块
                 Positioned(
-                  top: MediaQuery.of(context).orientation == Orientation.landscape
-                      ? MediaQuery.of(context).size.height * 0.001 // 横屏时显示在左侧上方位置
-                      : MediaQuery.of(context).size.height * 0.3, // 竖屏时显示在屏幕上方
-                  left: 10, // 移到画面最左侧
+                  top: MediaQuery.of(context).orientation ==
+                          Orientation.landscape
+                      ? MediaQuery.of(context).size.height * 0.001
+                      : MediaQuery.of(context).size.height * 0.3,
+                  left: 10,
                   child: GestureDetector(
-                    onTap: () {
-                      // 点击音量调节条本身不关闭
-                    },
+                    onTap: () {}, // 点击滑块本身不关闭
                     child: Material(
                       color: Colors.transparent,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 8.0,
-                          horizontal: 4.0,
-                        ),
+                            vertical: 8.0, horizontal: 4.0),
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(4.0),
                         ),
                         child: RotatedBox(
-                          quarterTurns: 3, // 旋转90度，变成垂直
+                          quarterTurns: 3,
                           child: SizedBox(
-                            width: 200, // 高度变为原来的两倍
+                            width: 200,
                             child: Slider(
-                              value: _volume * 100, // 转换为0-100范围
+                              value: _volume,
                               min: 0.0,
-                              max: 100.0,
+                              max: 1.0,
                               divisions: 100,
-                              onChanged: (value) {
-                                _handleVolumeChange(value);
-                              },
+                              onChanged: _handleVolumeChange,
                               activeColor: Colors.blue,
                               inactiveColor: Colors.grey[700],
                             ),
@@ -565,7 +546,6 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                 ),
               ],
             ),
-          ),
         ],
       ),
     );

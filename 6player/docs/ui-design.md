@@ -239,7 +239,7 @@ SettingsPage (ConsumerWidget)
 VideoPlayerPage (ConsumerWidget)
 └── Scaffold(backgroundColor: black)
     └── Stack
-        ├── Video(controller: videoController)  ← media_kit_video，填满屏幕
+        ├── Video(controller: videoController)  ← fvp_video，填满屏幕
         └── PlayerOverlay
             └── GestureDetector
                 ├── onTap → toggleControlsVisibility()

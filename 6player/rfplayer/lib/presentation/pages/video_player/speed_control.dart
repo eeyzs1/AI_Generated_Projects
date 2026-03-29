@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
+import 'video_player_controller.dart';
 
 class SpeedControl extends StatefulWidget {
   final double currentSpeed;
-  final Function(double) onSpeedChanged;
+  final MyVideoPlayerController controller;
+  /// 拖动时实时回调（只更新状态，不持久化）
+  final void Function(double speed)? onSpeedChanged;
+  /// 点击档位或手动输入后的最终值回调（持久化）
+  final void Function(double speed) onSpeedChangeFinal;
 
   const SpeedControl({
     super.key,
     required this.currentSpeed,
-    required this.onSpeedChanged,
+    required this.controller,
+    this.onSpeedChanged,
+    required this.onSpeedChangeFinal,
   });
 
   @override
@@ -15,62 +23,90 @@ class SpeedControl extends StatefulWidget {
 }
 
 class _SpeedControlState extends State<SpeedControl> {
-  final List<double> speedPresets = [
-    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0
-  ];
+  List<double> get speedPresets {
+    if (Platform.isAndroid) {
+      return [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0];
+    } else {
+      return [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0];
+    }
+  }
+
   double _currentSpeed = 1.0;
-  String _inputText = '1.00';
-  bool _isEditing = false;
+  bool _isDragging = false;
+  // 使用固定 controller 避免每次 rebuild 时光标跳到头
+  late final TextEditingController _textController;
 
   @override
   void initState() {
     super.initState();
     _currentSpeed = widget.currentSpeed;
-    _inputText = _formatSpeed(_currentSpeed);
+    _textController = TextEditingController(text: _formatSpeed(_currentSpeed));
   }
 
   @override
   void didUpdateWidget(covariant SpeedControl oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_isDragging) return;
     if (widget.currentSpeed != _currentSpeed) {
-      setState(() {
-        _currentSpeed = widget.currentSpeed;
-        _inputText = _formatSpeed(_currentSpeed);
-      });
+      _currentSpeed = widget.currentSpeed;
+      if (!_textController.selection.isValid ||
+          _textController.text != _formatSpeed(_currentSpeed)) {
+        _textController.text = _formatSpeed(_currentSpeed);
+      }
     }
   }
 
-  String _formatSpeed(double speed) {
-    return speed.toStringAsFixed(2);
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
   }
 
-  void _handleSpeedChange(double speed) {
+  String _formatSpeed(double speed) => speed.toStringAsFixed(2);
+
+  double get _maxSpeed => Platform.isAndroid ? 3.0 : 4.0;
+
+  void _applyPreset(double speed) {
     setState(() {
       _currentSpeed = speed;
-      _inputText = _formatSpeed(speed);
+      _textController.text = _formatSpeed(speed);
     });
-    widget.onSpeedChanged(speed);
+    widget.onSpeedChangeFinal(speed);
   }
 
-  void _handleTextChanged(String text) {
+  void _handleSliderChanged(double value) {
+    _isDragging = true;
     setState(() {
-      _inputText = text;
+      _currentSpeed = value;
+      _textController.text = _formatSpeed(value);
     });
+    widget.controller.setPlaybackSpeed(value);
+    widget.onSpeedChanged?.call(value);
+  }
+
+  void _handleSliderEnd(double value) {
+    _isDragging = false;
+    setState(() {
+      _currentSpeed = value;
+      _textController.text = _formatSpeed(value);
+    });
+    widget.onSpeedChangeFinal(value);
   }
 
   void _handleTextSubmitted(String text) {
-    setState(() {
-      _isEditing = false;
-    });
     try {
-      double speed = double.parse(text);
-      if (speed >= 0.25 && speed <= 4.0) {
-        _handleSpeedChange(speed);
+      final speed = double.parse(text);
+      if (speed >= 0.25 && speed <= _maxSpeed) {
+        setState(() {
+          _currentSpeed = speed;
+          _textController.text = _formatSpeed(speed);
+        });
+        widget.onSpeedChangeFinal(speed);
       } else {
-        _inputText = _formatSpeed(_currentSpeed);
+        _textController.text = _formatSpeed(_currentSpeed);
       }
-    } catch (e) {
-      _inputText = _formatSpeed(_currentSpeed);
+    } catch (_) {
+      _textController.text = _formatSpeed(_currentSpeed);
     }
   }
 
@@ -80,25 +116,23 @@ class _SpeedControlState extends State<SpeedControl> {
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Column(
         children: [
-          // 固定档位选择
+          // 固定档位
           Wrap(
             spacing: 0.0,
             children: speedPresets.map((speed) {
               return ElevatedButton(
-                onPressed: () => _handleSpeedChange(speed),
+                onPressed: () => _applyPreset(speed),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _currentSpeed == speed 
-                      ? Colors.blue 
-                      : Colors.grey[800],
+                  backgroundColor:
+                      _currentSpeed == speed ? Colors.blue : Colors.grey[800],
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 36),
                 ),
-                child: Text('${speed}'),
+                child: Text('$speed'),
               );
             }).toList(),
           ),
-          // const SizedBox(height: 10),
-          
+
           // 无级滑块
           Row(
             children: [
@@ -107,20 +141,20 @@ class _SpeedControlState extends State<SpeedControl> {
                 child: Slider(
                   value: _currentSpeed,
                   min: 0.25,
-                  max: 4.0,
-                  divisions: 375, // 0.01精度
+                  max: _maxSpeed,
                   label: '${_currentSpeed.toStringAsFixed(2)}x',
                   activeColor: Colors.blue,
                   inactiveColor: Colors.grey[700],
-                  onChanged: (value) => _handleSpeedChange(value),
+                  onChanged: _handleSliderChanged,
+                  onChangeEnd: _handleSliderEnd,
                 ),
               ),
-              const Text('4.00x', style: TextStyle(color: Colors.white)),
+              Text('${_maxSpeed.toStringAsFixed(2)}x',
+                  style: const TextStyle(color: Colors.white)),
             ],
           ),
-          // const SizedBox(height: 10),
-          
-          // 手动输入框
+
+          // 手动输入
           Row(
             children: [
               const Text('自定义速率: ', style: TextStyle(color: Colors.white)),
@@ -128,10 +162,9 @@ class _SpeedControlState extends State<SpeedControl> {
               SizedBox(
                 width: 80,
                 child: TextField(
-                  controller: TextEditingController(text: _inputText),
-                  onChanged: _handleTextChanged,
+                  controller: _textController,
                   onSubmitted: _handleTextSubmitted,
-                  onEditingComplete: () => _handleTextSubmitted(_inputText),
+                  onEditingComplete: () => _handleTextSubmitted(_textController.text),
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
@@ -148,7 +181,7 @@ class _SpeedControlState extends State<SpeedControl> {
               ),
               const SizedBox(width: 8),
               ElevatedButton(
-                onPressed: () => _handleSpeedChange(1.0),
+                onPressed: () => _applyPreset(1.0),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey[800],
                   foregroundColor: Colors.white,

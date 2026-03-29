@@ -13,6 +13,17 @@ subprojects {
         sourceCompatibility = JavaVersion.VERSION_17.toString()
         targetCompatibility = JavaVersion.VERSION_17.toString()
     }
+
+    afterEvaluate {
+        if (project.hasProperty("android")) {
+            extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+                compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_17
+                    targetCompatibility = JavaVersion.VERSION_17
+                }
+            }
+        }
+    }
 }
 
 val newBuildDir: Directory =

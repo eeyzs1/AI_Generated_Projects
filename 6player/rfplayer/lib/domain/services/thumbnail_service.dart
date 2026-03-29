@@ -1,12 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../../core/utils/file_utils.dart';
 
 /// 缩略图服务 - 生成和管理媒体文件缩略图
-/// 视频：使用 media_kit 截取第 1 秒帧，保存为 JPEG
+/// 视频：使用 fvp 截取第 1 秒帧，保存为 JPEG
 /// 图片：直接复制/缩放原图
 /// LRU 缓存（最多 200 张）
 class ThumbnailService {
@@ -87,8 +86,8 @@ class ThumbnailService {
     return thumbPath;
   }
 
-  /// 生成视频缩略图（使用 media_kit 获取视频信息）
-  /// 注意：media_kit 不直接支持截图，建议使用 ffmpeg 工具
+  /// 生成视频缩略图（使用 fvp 获取视频信息）
+  /// 注意：fvp 不直接支持截图，建议使用 ffmpeg 工具
   Future<String?> _generateVideoThumbnail(String filePath) async {
     Player? player;
     try {
@@ -100,7 +99,7 @@ class ThumbnailService {
       if (duration.inSeconds > 0) {
         await player.seek(const Duration(seconds: 1));
         await Future.delayed(const Duration(milliseconds: 500));
-        debugPrint('视频缩略图：media_kit 不支持直接截图，请使用 ffmpeg 工具');
+        debugPrint('视频缩略图：fvp 不支持直接截图，请使用 ffmpeg 工具');
       }
       
       await player.dispose();
