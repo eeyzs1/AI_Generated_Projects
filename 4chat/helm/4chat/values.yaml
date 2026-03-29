@@ -1,0 +1,106 @@
+# 4Chat umbrella chart values
+# 此处的值会以 middleware.* 和 services.* 前缀传给各子 chart
+# 也可以直接在此覆盖子 chart 的任意默认值
+
+middleware:
+  mysql:
+    enabled: true
+    image: mysql:8.4
+    rootPassword: root123
+    storage: 5Gi
+
+  redis:
+    enabled: true
+    image: redis:8-alpine
+
+  kafka:
+    enabled: true
+    zookeeperImage: confluentinc/cp-zookeeper:7.9.6
+    image: confluentinc/cp-kafka:7.9.6
+
+  nacos:
+    enabled: true
+    image: nacos/nacos-server:v3.1.1-slim
+    storage: 1Gi
+    authToken: "U2VjcmV0S2V5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5"
+    identityKey: nacosDevIdentityKey2026
+    identityValue: nacosDevSecretValue888
+
+  scylladb:
+    enabled: true
+    image: scylladb/scylla:6.2
+    storage: 5Gi
+    smp: "1"
+    memory: 512M
+
+services:
+  global:
+    registry: "localhost:5000"
+    imagePullPolicy: Never
+    secretKey: "your-secret-key-change-in-production"
+    mysql:
+      host: mysql
+      port: 3306
+      password: root123
+    redis:
+      url: redis://redis:6379/0
+    kafka:
+      bootstrapServers: kafka:9092
+    nacos:
+      host: nacos
+      port: 8848
+    scylla:
+      host: scylladb
+      port: 9042
+
+  userService:
+    enabled: true
+    replicas: 1
+    image: user-service:latest
+    smtp:
+      host: ""
+      port: "587"
+      user: ""
+      password: ""
+
+  groupService:
+    enabled: true
+    replicas: 1
+    image: group-service:latest
+
+  messageService:
+    enabled: true
+    replicas: 1
+    image: message-service:latest
+
+  connectorService:
+    enabled: true
+    replicas: 1
+    image: connector-service:latest
+
+  pushService:
+    enabled: true
+    replicas: 1
+    image: push-service:latest
+    smtp:
+      host: ""
+      port: "587"
+      user: ""
+      password: ""
+
+  storageService:
+    enabled: true
+    replicas: 1
+    image: storage-service:latest
+    storage: 2Gi
+
+  frontend:
+    enabled: true
+    replicas: 1
+    image: frontend:latest
+    nodePort: 30000
+
+  apisix:
+    enabled: true
+    image: apache/apisix:3.15.0-ubuntu
+    nodePort: 30080

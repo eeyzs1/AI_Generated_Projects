@@ -1,0 +1,77 @@
+{{- if .Values.storageService.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-pvc
+  labels:
+    app: storage-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.storageService.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-service
+  labels:
+    app: storage-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: storage-service
+  replicas: {{ .Values.storageService.replicas }}
+  template:
+    metadata:
+      labels:
+        app: storage-service
+    spec:
+      containers:
+        - name: storage-service
+          image: {{ include "services.image" (list . .Values.storageService.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8006
+          env:
+            - name: NACOS_HOST
+              value: {{ .Values.global.nacos.host }}
+            - name: NACOS_PORT
+              value: {{ .Values.global.nacos.port | quote }}
+            - name: SERVICE_HOST
+              value: storage-service
+            - name: SERVICE_PORT
+              value: "8006"
+            - name: SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+            - name: ACCESS_SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+          volumeMounts:
+            - name: avatars
+              mountPath: /app/static/avatars/uploads
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: avatars
+          persistentVolumeClaim:
+            claimName: storage-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-service
+  labels:
+    app: storage-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: storage-service
+  ports:
+    - port: 8006
+{{- end }}

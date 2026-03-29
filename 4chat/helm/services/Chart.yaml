@@ -1,0 +1,5 @@
+apiVersion: v2
+name: services
+description: 4Chat 业务服务（6个微服务 + 前端 + APISIX 网关）
+type: application
+version: 0.1.0
