@@ -41,8 +41,14 @@
 
 ### 3.2 向量数据库后端
 - FAISS
-- HNSWlib
-- Annoy
+- HNSW: Hierarchical Navigable Small Worlds
+- KD-Tree:K-Dimensional Tree
+- Ball-Tree:Ball Tree for k-Dimensional Spaces
+- Annoy:Approximate Nearest Neighbors Oh Yeah
+- IVF:Inverted File
+- FLAT
+- PQ:Product Quantization
+- LSH:Locality-Sensitive Hashing
 
 ### 3.3 元数据存储后端
 - MySQL
