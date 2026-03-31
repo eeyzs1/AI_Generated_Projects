@@ -9,6 +9,7 @@ import 'package:fvp/fvp.dart' as fvp;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 初始化 fvp 库
   fvp.registerWith();
 
   final db = AppDatabase();

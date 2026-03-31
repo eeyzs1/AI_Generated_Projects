@@ -1,5 +1,3 @@
-import org.gradle.api.JavaVersion
-
 allprojects {
     repositories {
         google()
@@ -8,19 +6,19 @@ allprojects {
 }
 
 subprojects {
-    tasks.withType<JavaCompile> {
-        options.encoding = "UTF-8"
-        sourceCompatibility = JavaVersion.VERSION_17.toString()
-        targetCompatibility = JavaVersion.VERSION_17.toString()
-    }
-
     afterEvaluate {
-        if (project.hasProperty("android")) {
-            extensions.configure<com.android.build.gradle.BaseExtension>("android") {
-                compileOptions {
-                    sourceCompatibility = JavaVersion.VERSION_17
-                    targetCompatibility = JavaVersion.VERSION_17
-                }
+        val android = extensions.findByName("android")
+        if (android is com.android.build.gradle.BaseExtension) {
+            android.compileOptions {
+                sourceCompatibility(org.gradle.api.JavaVersion.VERSION_17)
+                targetCompatibility(org.gradle.api.JavaVersion.VERSION_17)
+            }
+        }
+
+        // 新版 Kotlin 编译器配置（无废弃语法）
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configureEach {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
             }
         }
     }
@@ -36,6 +34,7 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }

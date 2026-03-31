@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/thumbnail_provider.dart';
 import '../../../data/models/play_history.dart';
 import '../../../data/models/bookmark.dart';
 import 'package:go_router/go_router.dart';
@@ -63,19 +65,55 @@ class HomePage extends ConsumerWidget {
           itemCount: history.length,
           itemBuilder: (context, index) {
             final item = history[index];
-            return ListTile(
-              leading: Icon(
-                item.type == MediaType.video ? Icons.video_library : Icons.image,
-                size: 40,
-              ),
-              title: Text(item.displayName),
-              subtitle: Text(item.progressString),
-              onTap: () {
-                if (item.type == MediaType.video) {
-                  GoRouter.of(context).push('/video-player', extra: item.path);
-                } else {
-                  GoRouter.of(context).push('/image-viewer', extra: item.path);
-                }
+            return Consumer(
+              builder: (context, ref, child) {
+                final thumbnail = ref.watch(thumbnailGeneratorProvider(item.path));
+                return ListTile(
+                  leading: thumbnail.when(
+                    data: (path) {
+                      if (path != null) {
+                        return Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                          ),
+                          child: Image.file(
+                            File(path),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                item.type == MediaType.video ? Icons.video_library : Icons.image,
+                                size: 40,
+                              );
+                            },
+                          ),
+                        );
+                      } else {
+                        return Icon(
+                          item.type == MediaType.video ? Icons.video_library : Icons.image,
+                          size: 40,
+                        );
+                      }
+                    },
+                    loading: () => const CircularProgressIndicator(),
+                    error: (error, stackTrace) {
+                      return Icon(
+                        item.type == MediaType.video ? Icons.video_library : Icons.image,
+                        size: 40,
+                      );
+                    },
+                  ),
+                  title: Text(item.displayName),
+                  subtitle: Text(item.progressString),
+                  onTap: () {
+                    if (item.type == MediaType.video) {
+                      GoRouter.of(context).push('/video-player', extra: item.path);
+                    } else {
+                      GoRouter.of(context).push('/image-viewer', extra: item.path);
+                    }
+                  },
+                );
               },
             );
           },

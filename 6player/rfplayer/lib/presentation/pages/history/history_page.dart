@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/thumbnail_provider.dart';
 import '../../../data/models/play_history.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -56,38 +58,74 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
           itemCount: history.length,
           itemBuilder: (context, index) {
             final item = history[index];
-            return ListTile(
-              leading: Icon(
-                item.type == MediaType.video ? Icons.video_library : Icons.image,
-                size: 40,
-              ),
-              title: Text(item.displayName),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.path),
-                  Text(item.progressString),
-                  Text(
-                    '最后播放: ${item.lastPlayedAt.toString().substring(0, 19)}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+            return Consumer(
+              builder: (context, ref, child) {
+                final thumbnail = ref.watch(thumbnailGeneratorProvider(item.path));
+                return ListTile(
+                  leading: thumbnail.when(
+                    data: (path) {
+                      if (path != null) {
+                        return Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                          ),
+                          child: Image.file(
+                            File(path),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Icon(
+                                item.type == MediaType.video ? Icons.video_library : Icons.image,
+                                size: 40,
+                              );
+                            },
+                          ),
+                        );
+                      } else {
+                        return Icon(
+                          item.type == MediaType.video ? Icons.video_library : Icons.image,
+                          size: 40,
+                        );
+                      }
+                    },
+                    loading: () => const CircularProgressIndicator(),
+                    error: (error, stackTrace) {
+                      return Icon(
+                        item.type == MediaType.video ? Icons.video_library : Icons.image,
+                        size: 40,
+                      );
+                    },
                   ),
-                ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete),
-                onPressed: () async {
-                  await ref.read(historyRepositoryProvider).deleteById(item.id);
-                  setState(() {
-                    _refreshKey++;
-                  });
-                },
-              ),
-              onTap: () {
-                if (item.type == MediaType.video) {
-                  GoRouter.of(context).push('/video-player', extra: item.path);
-                } else {
-                  GoRouter.of(context).push('/image-viewer', extra: item.path);
-                }
+                  title: Text(item.displayName),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.path),
+                      Text(item.progressString),
+                      Text(
+                        '最后播放: ${item.lastPlayedAt.toString().substring(0, 19)}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () async {
+                      await ref.read(historyRepositoryProvider).deleteById(item.id);
+                      setState(() {
+                        _refreshKey++;
+                      });
+                    },
+                  ),
+                  onTap: () {
+                    if (item.type == MediaType.video) {
+                      GoRouter.of(context).push('/video-player', extra: item.path);
+                    } else {
+                      GoRouter.of(context).push('/image-viewer', extra: item.path);
+                    }
+                  },
+                );
               },
             );
           },

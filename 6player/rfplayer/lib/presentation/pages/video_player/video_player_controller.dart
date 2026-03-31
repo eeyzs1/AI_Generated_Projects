@@ -1,6 +1,5 @@
 import 'package:video_player/video_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart';
 import '../../../data/models/play_history.dart' as ph;
 import '../../../presentation/providers/database_provider.dart';
 import 'dart:async';
@@ -24,6 +23,8 @@ class MyVideoPlayerController {
     final historyRepo = ref.read(historyRepositoryProvider);
     var history = await historyRepo.getByPath(path);
 
+    final duration = videoController.value.duration;
+    
     if (history == null) {
       final extension = p.extension(path).substring(1).toLowerCase();
       history = ph.PlayHistory(
@@ -33,7 +34,7 @@ class MyVideoPlayerController {
         extension: extension,
         type: ph.MediaType.video,
         lastPosition: Duration.zero,
-        totalDuration: Duration.zero,
+        totalDuration: duration != Duration.zero ? duration : null,
         lastPlayedAt: DateTime.now(),
         playCount: 1,
       );
@@ -47,7 +48,7 @@ class MyVideoPlayerController {
         extension: history.extension,
         type: history.type,
         lastPosition: history.lastPosition,
-        totalDuration: Duration.zero,
+        totalDuration: duration != Duration.zero ? duration : history.totalDuration,
         lastPlayedAt: DateTime.now(),
         playCount: history.playCount + 1,
       );
@@ -58,12 +59,41 @@ class MyVideoPlayerController {
       }
     }
 
+    // 监听视频控制器的value变化，当duration变化时更新历史记录
+    videoController.addListener(() {
+      final currentDuration = videoController.value.duration;
+      if (currentDuration != Duration.zero) {
+        _updateTotalDuration(currentDuration);
+      }
+    });
+
     videoController.play();
 
     // 每1秒更新一次播放位置
     _positionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       updatePlaybackPosition();
     });
+  }
+
+  Future<void> _updateTotalDuration(Duration duration) async {
+    if (_disposed) return;
+    final historyRepo = ref.read(historyRepositoryProvider);
+    var history = await historyRepo.getByPath(path);
+    if (history != null) {
+      // 无论 totalDuration 是 null 还是 Duration.zero，都更新为实际时长
+      final updatedHistory = ph.PlayHistory(
+        id: history.id,
+        path: history.path,
+        displayName: history.displayName,
+        extension: history.extension,
+        type: history.type,
+        lastPosition: history.lastPosition,
+        totalDuration: duration,
+        lastPlayedAt: history.lastPlayedAt,
+        playCount: history.playCount,
+      );
+      await historyRepo.upsert(updatedHistory);
+    }
   }
 
   Future<void> updatePlaybackPosition() async {

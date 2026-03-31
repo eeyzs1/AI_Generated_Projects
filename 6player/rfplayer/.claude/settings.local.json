@@ -2,7 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(flutter --version)",
-      "Read(//e/AI_Generated_Projects/**)"
+      "Read(//e/AI_Generated_Projects/6player/rfplayer/**)"
     ]
   }
 }

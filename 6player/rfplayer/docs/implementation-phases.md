@@ -116,7 +116,12 @@
   ```dart
   void main() async {
     WidgetsFlutterBinding.ensureInitialized();
-    MediaKit.ensureInitialized();
+    fvp.registerWith();
+    final db = AppDatabase();
+    final historyRepository = HistoryRepository(db);
+    final bookmarkRepository = BookmarkRepository(db);
+    await historyRepository.cleanupInvalidRecords();
+    await bookmarkRepository.cleanupInvalidRecords();
     runApp(const ProviderScope(child: RFPlayerApp()));
   }
   ```
@@ -206,54 +211,123 @@
 
 ### 任务清单
 
-#### 3.1 播放器服务
-- 创建 `lib/domain/services/player_service.dart`
+#### 3.1 视频播放器控制器
+- 创建 `lib/presentation/pages/video_player/video_player_controller.dart`
   ```dart
-  class PlayerService {
-    late final Player _player;
-    late final VideoController _videoController;
+  class MyVideoPlayerController {
+    late final VideoPlayerController videoController;
+    final String path;
+    final WidgetRef ref;
+    Timer? _positionTimer;
+    bool _disposed = false;
 
-    void initialize() {
-      _player = Player(
-        configuration: PlayerConfiguration(
-          vo: Platform.isWindows ? 'gpu' : null,
-        ),
-      );
-      _videoController = VideoController(
-        _player,
-        configuration: const VideoControllerConfiguration(
-          enableHardwareAcceleration: true,
-        ),
-      );
+    MyVideoPlayerController(this.path, this.ref) {
+      videoController = VideoPlayerController.file(File(path));
     }
 
-    Future<void> open(String path, {Duration? startPosition}) async {
-      await _player.open(Media(path));
-      if (startPosition != null) await _player.seek(startPosition);
+    Future<void> initialize() async {
+      await videoController.initialize();
+
+      final historyRepo = ref.read(historyRepositoryProvider);
+      var history = await historyRepo.getByPath(path);
+
+      if (history == null) {
+        final extension = p.extension(path).substring(1).toLowerCase();
+        history = ph.PlayHistory(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          path: path,
+          displayName: p.basename(path),
+          extension: extension,
+          type: ph.MediaType.video,
+          lastPosition: Duration.zero,
+          totalDuration: Duration.zero,
+          lastPlayedAt: DateTime.now(),
+          playCount: 1,
+        );
+        await historyRepo.upsert(history);
+      } else {
+        final extension = p.extension(path).substring(1).toLowerCase();
+        final updatedHistory = ph.PlayHistory(
+          id: history.id,
+          path: history.path,
+          displayName: history.displayName,
+          extension: history.extension,
+          type: history.type,
+          lastPosition: history.lastPosition,
+          totalDuration: Duration.zero,
+          lastPlayedAt: DateTime.now(),
+          playCount: history.playCount + 1,
+        );
+        await historyRepo.upsert(updatedHistory);
+
+        if (updatedHistory.lastPosition != null && updatedHistory.lastPosition!.inMilliseconds > 0) {
+          await videoController.seekTo(updatedHistory.lastPosition!);
+        }
+      }
+
+      videoController.play();
+
+      // 每1秒更新一次播放位置
+      _positionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        updatePlaybackPosition();
+      });
     }
 
-    Future<void> play() => _player.play();
-    Future<void> pause() => _player.pause();
-    Future<void> seekTo(Duration position) => _player.seek(position);
-    Future<void> setVolume(double volume) => _player.setVolume(volume * 100);
-    VideoController get videoController => _videoController;
-    Stream<PlayerState> get stateStream => _player.stream.map(...);
-  }
-  ```
+    Future<void> updatePlaybackPosition() async {
+      if (_disposed) return;
+      final position = videoController.value.position;
+      final historyRepo = ref.read(historyRepositoryProvider);
+      await historyRepo.updatePosition(path, position);
+    }
 
-#### 3.2 播放器状态管理
-- 创建 `lib/presentation/providers/player_provider.dart`
-  - `PlayerState`（isPlaying, position, duration, volume, isBuffering, currentPath）
-  - `PlayerNotifier`（封装 PlayerService，暴露控制方法）
+    void play() {
+      videoController.play();
+    }
 
-#### 3.3 OpenMediaUseCase
-- 创建 `lib/domain/usecases/open_media_usecase.dart`
-  ```dart
-  class OpenMediaUseCase {
-    Future<void> execute(String path, {Duration? resumeFrom}) async {
-      // 1. 调用 PlayerService.open(path, startPosition: resumeFrom)
-      // 2. 写入/更新 PlayHistory（upsert）
-      // 3. 异步触发 ThumbnailService.generateAsync(path)
+    void pause() {
+      videoController.pause();
+    }
+
+    void seek(Duration position) {
+      videoController.seekTo(position);
+    }
+
+    void setVolume(double volume) {
+      videoController.setVolume(volume);
+    }
+
+    double get volume {
+      return videoController.value.volume;
+    }
+
+    void setPlaybackSpeed(double speed) {
+      videoController.setPlaybackSpeed(speed);
+    }
+
+    double get playbackSpeed {
+      return videoController.value.playbackSpeed;
+    }
+
+    Duration get duration {
+      return videoController.value.duration;
+    }
+
+    Duration get position {
+      return videoController.value.position;
+    }
+
+    bool get isPlaying {
+      return videoController.value.isPlaying;
+    }
+
+    VideoPlayerController get controller {
+      return videoController;
+    }
+
+    void dispose() {
+      _disposed = true;
+      _positionTimer?.cancel();
+      videoController.dispose();
     }
   }
   ```
