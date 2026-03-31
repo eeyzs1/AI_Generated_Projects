@@ -92,8 +92,14 @@ flowchart TD
 
 **实现**：
 - `FAISSVectorDB`：基于FAISS库的实现
-- `HNSWVectorDB`：基于HNSW算法的实现
-- `AnnoyVectorDB`：基于Annoy算法的实现
+- HNSW: Hierarchical Navigable Small Worlds
+- KD-Tree:K-Dimensional Tree
+- Ball-Tree:Ball Tree for k-Dimensional Spaces
+- Annoy:Approximate Nearest Neighbors Oh Yeah
+- IVF:Inverted File
+- FLAT
+- PQ:Product Quantization
+- LSH:Locality-Sensitive Hashing
 
 ### 2.5 LLM接口层
 
