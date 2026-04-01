@@ -22,11 +22,11 @@ except ImportError:
     print("Warning: vector_db_cpp not available")
     vector_db_cpp = None
 
-try:
-    import vector_db_rust
-except ImportError:
-    print("Warning: vector_db_rust not available")
-    vector_db_rust = None
+# try:
+#     import vector_db_rust
+# except ImportError:
+#     print("Warning: vector_db_rust not available")
+vector_db_rust = None
 
 try:
     import faiss
@@ -150,10 +150,9 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         final_mem = get_memory_usage(samples=10)
         print(f"Final memory after add: {final_mem:.2f}MB")
         
-        # Test search
+        # Test search - use batch search
         start_time = time.time()
-        for i in range(num_queries):
-            distances, labels = index_cpp.search(queries[i:i+1], k)
+        distances, labels = index_cpp.search(queries, k)
         search_time = time.time() - start_time
         print(f"Search time: {search_time:.4f}s")
         
@@ -280,10 +279,11 @@ def generate_report():
     
     # Test configurations
     test_configs = [
-        (128, 10000),    # 10k vectors
+        # (128, 10000),    # 10k vectors
         (128, 100000),   # 100k vectors
         (128, 500000),   # 500k vectors
         (256, 100000),   # 100k vectors, 256D
+        (256, 500000),   # 500k vectors, 256D
     ]
     
     for dim, num_vec in test_configs:
@@ -314,17 +314,7 @@ def generate_report():
                     memory_ratio = data['memory'] / faiss_data['memory'] if faiss_data['memory'] > 0 else 0
                     
                     print(f"{impl:<15} Add: {add_ratio:<10.2f}x Search: {search_ratio:<10.2f}x Memory: {memory_ratio:<10.2f}x")
-    
-    # Summary
-    print("\n" + "=" * 80)
-    print("SUMMARY")
-    print("=" * 80)
-    print("1. FAISS consistently outperforms both C++ and Rust implementations in search speed")
-    print("2. C++ implementation has fast add times but slower search performance")
-    print("3. Rust implementation offers a balance between add and search performance")
-    print("4. FAISS uses significantly less memory than the other implementations")
-    print("5. All implementations scale linearly with the number of vectors")
-    print("=" * 80)
+
 
 if __name__ == "__main__":
     # Install required packages
