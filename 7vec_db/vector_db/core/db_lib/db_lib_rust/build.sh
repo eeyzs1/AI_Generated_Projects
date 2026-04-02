@@ -2,6 +2,7 @@
 
 # 编译Rust库
 echo "编译Rust库..."
+export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 cargo build --release
 
 # 检查编译是否成功
@@ -10,14 +11,23 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "编译成功: libvector_db_rust.so"
+# 获取编译输出的动态库文件名（不同系统可能不同）
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    LIB_FILE="libvector_db_rust.dylib"
+else
+    # Linux
+    LIB_FILE="libvector_db_rust.so"
+fi
+
+echo "编译成功: $LIB_FILE"
 
 # 获取Python site-packages目录
 PYTHON_SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
 
 # 复制到site-packages目录
 echo "正在安装 vector_db_rust 到 $PYTHON_SITE_PACKAGES"
-sudo cp target/release/libvector_db_rust.so "$PYTHON_SITE_PACKAGES/vector_db_rust.so"
+sudo cp "target/release/$LIB_FILE" "$PYTHON_SITE_PACKAGES/vector_db_rust.so"
 
 # 检查安装是否成功
 if [ $? -ne 0 ]; then

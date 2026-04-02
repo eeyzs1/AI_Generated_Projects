@@ -5,7 +5,7 @@ PYTHON_INCLUDE=$(python3 -c "import sysconfig; print(sysconfig.get_path('include
 
 # 编译向量数据库库
 echo "编译向量数据库库..."
-g++ -std=c++23 -shared -fPIC -O3 -mavx -mavx2 -mfma \
+g++ -std=c++23 -shared -fPIC -O3 -march=native -mtune=native -flto -mavx -mavx2 -mfma \
     -I$PYTHON_INCLUDE \
     -I$(python3 -m pybind11 --includes) \
     vector_db.cpp bindings.cpp \

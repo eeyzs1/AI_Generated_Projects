@@ -7,7 +7,7 @@ index = vector_db_cpp.IndexFlatL2(dimension)
 
 # 生成一些示例向量
 num_vectors = 1000
-vectors = np.random.rand(num_vectors, dimension).astype(np.float64)
+vectors = np.random.rand(num_vectors, dimension).astype(np.float32)
 
 # 批量添加向量
 print("Adding vectors...")
@@ -17,7 +17,7 @@ print(f"Added {index.size()} vectors of dimension {index.get_dimension()}")
 
 # 生成查询向量（支持批量查询）
 num_queries = 1
-queries = np.random.rand(num_queries, dimension).astype(np.float64)
+queries = np.random.rand(num_queries, dimension).astype(np.float32)
 
 # 搜索Top-5
 k = 5
