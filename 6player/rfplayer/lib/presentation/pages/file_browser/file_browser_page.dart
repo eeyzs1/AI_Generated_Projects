@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../../../core/extensions/string_extensions.dart';
 import '../../../data/models/play_history.dart';
 import '../../../presentation/providers/database_provider.dart';
+import '../../../presentation/providers/play_queue_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -53,9 +54,44 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       );
 
       if (result != null && result.files.isNotEmpty) {
+        List<String> videoPaths = [];
+        
         for (final file in result.files) {
           final path = file.path!;
-          await _openFile(path);
+          final fileObj = File(path);
+          
+          // 创建或更新历史记录
+          final historyRepo = ref.read(historyRepositoryProvider);
+          final history = PlayHistory(
+            id: const Uuid().v4(),
+            path: path,
+            displayName: p.basename(fileObj.path),
+            extension: path.fileExtension,
+            type: path.isVideoFile ? MediaType.video : MediaType.image,
+            lastPlayedAt: DateTime.now(),
+            playCount: 1,
+          );
+          await historyRepo.upsert(history);
+          
+          // 如果是视频文件，添加到视频路径列表
+          if (path.isVideoFile) {
+            final playQueueNotifier = ref.read(playQueueProvider.notifier);
+            await playQueueNotifier.addToQueue(path, p.basename(fileObj.path));
+            videoPaths.add(path);
+          } else if (path.isImageFile) {
+            // 如果是图片文件，直接打开
+            context.push('/image-viewer', extra: path);
+          }
+        }
+        
+        // 重新加载最近文件列表
+        await _loadRecentFiles();
+        
+        // 只打开第一个视频文件
+        if (videoPaths.isNotEmpty) {
+          // 使用 push 导航到视频播放器页面
+          // 这样当用户点击返回按钮时，会返回到之前的页面
+          context.push('/video-player', extra: videoPaths[0]);
         }
       }
     } catch (e) {
@@ -88,6 +124,12 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
 
     // 根据文件类型打开相应的播放器
     if (path.isVideoFile) {
+      // 将视频添加到播放队列
+      final playQueueNotifier = ref.read(playQueueProvider.notifier);
+      await playQueueNotifier.addToQueue(path, p.basename(file.path));
+      
+      // 使用 push 导航到视频播放器页面
+      // 这样当用户点击返回按钮时，会返回到之前的页面
       context.push('/video-player', extra: path);
     } else if (path.isImageFile) {
       context.push('/image-viewer', extra: path);
@@ -147,50 +189,34 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                   ),
                   const SizedBox(height: 16),
                   if (_recentFiles.isEmpty)
-                    Center(
-                      child: Text(localizations.noRecentPlays),
+                    Expanded(
+                      child: Center(
+                        child: Text(localizations.noRecentPlays),
+                      ),
                     )
                   else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _recentFiles.length,
-                      itemBuilder: (context, index) {
-                        final file = _recentFiles[index];
-                        return ListTile(
-                          leading: Icon(
-                            file.path.isVideoFile
-                                ? Icons.video_library
-                                : Icons.image,
-                          ),
-                          title: Text(p.basename(file.path)),
-                          onTap: () => _openFile(file.path),
-                          trailing: IconButton(
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: Text(localizations.confirmDelete),
-                                  content: Text(localizations.sureToDelete),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(context).pop(),
-                                      child: Text(localizations.cancel),
-                                    ),
-                                    TextButton(
-                                      onPressed: () async {
-                                        await _deleteRecentFile(file.path);
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: Text(localizations.confirm),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.delete),
-                          ),
-                        );
-                      },
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _recentFiles.length,
+                        itemBuilder: (context, index) {
+                          final file = _recentFiles[index];
+                          return ListTile(
+                            leading: Icon(
+                              file.path.isVideoFile
+                                  ? Icons.video_library
+                                  : Icons.image,
+                            ),
+                            title: Text(p.basename(file.path)),
+                            onTap: () => _openFile(file.path),
+                            trailing: IconButton(
+                              onPressed: () async {
+                                await _deleteRecentFile(file.path);
+                              },
+                              icon: const Icon(Icons.delete),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                 ],
               ),

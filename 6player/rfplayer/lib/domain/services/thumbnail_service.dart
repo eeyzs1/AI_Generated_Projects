@@ -8,7 +8,6 @@ import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
 import '../../core/utils/file_utils.dart';
 
 /// 缩略图服务 - 生成和管理媒体文件缩略图
-/// 视频：使用 fvp 截取第 1 秒帧，保存为 JPEG
 /// 图片：直接复制/缩放原图
 /// LRU 缓存（最多 200 张）
 class ThumbnailService {
@@ -48,7 +47,6 @@ class ThumbnailService {
     if (_memoryCache.containsKey(cacheKey)) {
       _cacheOrder.remove(cacheKey);
       _cacheOrder.add(cacheKey);
-      debugPrint('从内存缓存获取缩略图: $cacheKey');
       return _memoryCache[cacheKey];
     }
 
@@ -59,18 +57,13 @@ class ThumbnailService {
       // 检查文件大小，如果文件大小为 0，就认为它是无效的
       final fileSize = await thumbFile.length();
       if (fileSize > 0) {
-        debugPrint('从磁盘缓存获取缩略图: $thumbPath (大小: $fileSize bytes)');
         _addToMemoryCache(cacheKey, thumbPath);
         return thumbPath;
       } else {
-        debugPrint('缓存的缩略图文件大小为 0，视为无效: $thumbPath');
         // 删除无效的缓存文件
         await thumbFile.delete();
       }
-    } else {
-      debugPrint('缩略图文件不存在: $thumbPath');
     }
-
     return null;
   }
 
@@ -86,34 +79,24 @@ class ThumbnailService {
 
   /// 生成缩略图
   Future<String?> generateThumbnail(String filePath) async {
-    debugPrint('开始生成缩略图: $filePath');
-    
     final existingThumb = await getThumbnail(filePath);
     if (existingThumb != null) {
-      debugPrint('缩略图已存在: $existingThumb');
       return existingThumb;
     }
 
     String? thumbPath;
 
     if (FileUtils.isVideoFile(filePath)) {
-      debugPrint('识别为视频文件，生成视频缩略图');
       thumbPath = await _generateVideoThumbnail(filePath);
     } else if (FileUtils.isImageFile(filePath)) {
-      debugPrint('识别为图片文件，生成图片缩略图');
       thumbPath = await _generateImageThumbnail(filePath);
-    } else {
-      debugPrint('未识别的文件类型: $filePath');
     }
-
-    debugPrint('缩略图生成完成，路径: $thumbPath');
     return thumbPath;
   }
 
   /// 生成视频缩略图（使用 video_thumbnail 插件）
   Future<String?> _generateVideoThumbnail(String filePath) async {
     try {
-      debugPrint('开始生成视频缩略图: $filePath');
       final cacheDir = await cacheDirectory;
       final cacheKey = _getCacheKey(filePath);
       final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
@@ -122,25 +105,21 @@ class ThumbnailService {
       final dir = Directory(cacheDir);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
-        debugPrint('创建缓存目录: $cacheDir');
       }
       
       // 检查文件是否存在
       final videoFile = File(filePath);
       if (!await videoFile.exists()) {
-        debugPrint('视频文件不存在: $filePath');
         return null;
       }
       
       // 检查文件大小
       final fileSize = await videoFile.length();
       if (fileSize == 0) {
-        debugPrint('视频文件大小为 0: $filePath');
         return null;
       }
       
       // 使用 compute 在 Isolate 中生成缩略图，避免阻塞 UI
-      debugPrint('使用 fc_native_video_thumbnail 插件生成缩略图');
       final thumbnail = await compute(_generateVideoThumbnailInIsolate, {
         'filePath': filePath,
         'thumbPath': thumbPath,
@@ -151,21 +130,15 @@ class ThumbnailService {
         // 检查生成的文件是否有效
         final thumbFile = File(thumbnail);
         if (await thumbFile.exists() && await thumbFile.length() > 100) {
-          debugPrint('video_thumbnail 视频缩略图生成成功: $thumbnail');
           _addToMemoryCache(cacheKey, thumbnail);
           return thumbnail;
         } else {
-          debugPrint('生成的缩略图文件无效或为空');
           if (await thumbFile.exists()) {
             await thumbFile.delete();
           }
         }
-      } else {
-        debugPrint('video_thumbnail 生成失败，返回 null');
       }
-      
       // 所有方法都失败，返回 null
-      debugPrint('所有方法都失败，返回 null');
     } catch (e) {
       debugPrint('生成视频缩略图失败: $e');
     }
@@ -201,33 +174,6 @@ class ThumbnailService {
       debugPrint('Isolate 中生成视频缩略图失败: $e');
       return null;
     }
-  }
-
-  /// 使用 ffmpeg 生成视频缩略图
-  /// 需要系统安装 ffmpeg
-  Future<String?> generateVideoThumbnailWithFFmpeg(String filePath) async {
-    try {
-      final cacheDir = await cacheDirectory;
-      final cacheKey = _getCacheKey(filePath);
-      final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
-
-      final result = await Process.run('ffmpeg', [
-        '-i', filePath,
-        '-ss', '00:00:01',
-        '-vframes', '1',
-        '-vf', 'scale=320:180',
-        '-y',
-        thumbPath,
-      ]);
-
-      if (result.exitCode == 0) {
-        _addToMemoryCache(cacheKey, thumbPath);
-        return thumbPath;
-      }
-    } catch (e) {
-      debugPrint('使用 ffmpeg 生成视频缩略图失败: $e');
-    }
-    return null;
   }
 
   /// 生成图片缩略图（复制原图）

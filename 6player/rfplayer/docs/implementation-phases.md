@@ -363,6 +363,12 @@
 - -：减少播放速率 0.1x
 - 0：重置播放速率为 1.0x
 
+#### 3.8 字幕支持
+- 实现 `lib/presentation/pages/video_player/widgets/subtitle_controls.dart`
+- 支持加载外部字幕文件（.srt, .ass, .ssa, .vtt）
+- 提供字幕选择、显示/隐藏控制
+- 字幕文件选择通过 `FilePicker` 实现
+
 ### 验收标准
 - [ ] MP4/MKV/AVI/MOV/H.265 等格式正常播放
 - [ ] 播放/暂停/进度条/音量控制正常
@@ -384,6 +390,10 @@
   - [ ] +：增加播放速率 0.1x
   - [ ] -：减少播放速率 0.1x
   - [ ] 0：重置播放速率为 1.0x
+- [ ] 字幕功能正常
+  - [ ] 支持加载外部字幕文件（.srt, .ass, .ssa, .vtt）
+  - [ ] 字幕选择和显示/隐藏控制正常
+  - [ ] 字幕文件选择通过 `FilePicker` 实现
 
 ---
 
@@ -546,3 +556,74 @@
 - [ ] 2 小时播放无内存泄漏
 - [ ] 中文路径文件正常播放
 - [ ] APK 和 Windows 安装包可正常安装运行
+
+---
+
+## Phase 8 — 常驻播放列表 + 自动连播
+
+**目标**：实现常驻播放列表功能，支持自动连播、三态管理和 SQLite 持久化。
+
+### 任务清单
+
+#### 8.1 数据层扩展
+- 创建 `lib/data/database/tables/play_queue_table.dart`
+  - 字段：id, path, display_name, sort_order, added_at, is_current_playing, has_played, play_progress, is_invalid
+- 完善 `lib/data/database/daos/play_queue_dao.dart`
+  - 实现 CRUD 操作
+  - 实现排序和播放状态更新
+  - 新增 resetAllCurrentPlaying、setCurrentPlaying、markAsPlayed、updatePlayProgress 方法
+- 创建 `lib/data/models/play_queue.dart`
+  - 定义 PlayQueueItem 模型，包含 isCurrentPlaying、hasPlayed、playProgress 字段
+- 创建 `lib/data/repositories/play_queue_repository.dart`
+  - 实现队列管理逻辑
+  - 提供文件存在性校验
+  - 代理 DAO 层方法，处理业务逻辑
+
+#### 8.2 业务逻辑实现
+- 创建 `lib/domain/services/play_queue_service.dart`
+  - 队列管理：添加、删除、排序、清空
+  - 自动连播逻辑：播放完成后自动播放下一个
+  - 文件有效性校验：启动时检测文件是否存在
+  - 三态管理：待播、正在播放、已播完成
+- 创建 `lib/presentation/providers/play_queue_provider.dart`
+  - 状态管理：当前队列、播放状态、当前播放项
+  - 实时同步数据库
+
+#### 8.3 UI 组件实现
+- **Windows 端**：
+  - 创建 `lib/presentation/pages/video_player/widgets/windows_play_list_panel.dart`
+  - 右侧常驻面板，展示视频列表
+  - 支持拖拽排序、双击播放、删除操作
+- **Android 端**：
+  - 创建 `lib/presentation/pages/video_player/widgets/android_play_list_drawer.dart`
+  - 底部抽屉式面板，适配移动端
+  - 支持点击展开/收起
+- 实现 `lib/presentation/pages/video_player/widgets/play_list_item.dart`
+  - 显示视频名称、时长、播放状态
+  - 支持高亮当前播放项
+  - 三态视觉区分：待播（默认样式）、正在播放（主题色高亮+▶️图标）、已播完成（灰色弱化+✅标记）
+
+#### 8.4 播放逻辑集成
+- 修改 `lib/presentation/pages/video_player/video_player_controller.dart`
+  - 集成播放队列服务
+  - 实现播放完成回调，触发自动连播
+  - 实时同步播放进度到播放队列
+- 修改 `lib/presentation/pages/video_player/video_player_page.dart`
+  - 集成平台特定的播放列表 UI
+  - 添加播放队列控制按钮
+
+#### 8.5 双端适配
+- **Windows 端**：主播放区域 + 右侧常驻列表面板
+- **Android 端**：顶部播放列表按钮 + 底部抽屉面板
+- 统一操作按钮：上一个、下一个、清空队列、删除选中项
+
+### 验收标准
+- [ ] 播放队列数据持久化，重启 App 后列表保留
+- [ ] 自动连播功能正常，播放完成后无缝续播下一个
+- [ ] 三态管理正常：待播、正在播放、已播完成状态正确切换
+- [ ] Windows 端右侧常驻面板显示正常，支持拖拽排序
+- [ ] Android 端底部抽屉式面板显示正常，不遮挡播放画面
+- [ ] 队列操作实时同步到数据库
+- [ ] 文件有效性校验正常，失效路径自动过滤
+- [ ] 播放进度实时同步，支持断点续播
+- [ ] 兼容现有所有播放功能，不影响原有解码、渲染逻辑

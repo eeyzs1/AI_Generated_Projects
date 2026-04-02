@@ -80,28 +80,34 @@ lib/
 │   │   ├── app_database.dart         # @DriftDatabase 定义，包含所有 Table 和 DAO
 │   │   ├── tables/
 │   │   │   ├── play_history_table.dart
-│   │   │   └── bookmarks_table.dart
+│   │   │   ├── bookmarks_table.dart
+│   │   │   └── play_queue_table.dart
 │   │   └── daos/
 │   │       ├── history_dao.dart      # PlayHistory CRUD + upsert
-│   │       └── bookmark_dao.dart    # Bookmark CRUD + reorder
+│   │       ├── bookmark_dao.dart    # Bookmark CRUD + reorder
+│   │       └── play_queue_dao.dart  # PlayQueue CRUD + reorder + next item
 │   ├── models/
 │   │   ├── play_history.dart         # PlayHistory + progress getter
 │   │   ├── bookmark.dart             # Bookmark
+│   │   ├── play_queue.dart           # PlayQueueItem
 │   │   └── app_settings.dart         # AppSettings + ThemeMode + UIStyle enums
 │   └── repositories/
 │       ├── history_repository.dart   # 历史记录读写，封装 HistoryDao
 │       ├── bookmark_repository.dart  # 书签读写，封装 BookmarkDao
+│       ├── play_queue_repository.dart # 播放队列读写，封装 PlayQueueDao
 │       └── settings_repository.dart  # SharedPreferences 读写 AppSettings
 │
 ├── domain/                            # 业务逻辑层
 │   ├── services/
 │   │   ├── permission_service.dart    # 抽象类 + 平台实现
-│   │   └── thumbnail_service.dart     # 视频截帧 + 图片缩略图
+│   │   ├── thumbnail_service.dart     # 视频截帧 + 图片缩略图
+│   │   └── play_queue_service.dart    # 播放队列管理，自动连播逻辑
 │
 ├── presentation/                      # UI 层
 │   ├── providers/
 │   │   ├── database_provider.dart     # 数据库相关 Provider
 │   │   ├── image_viewer_provider.dart # 图片查看器状态管理
+│   │   ├── play_queue_provider.dart   # 播放队列状态管理
 │   │   ├── settings_provider.dart     # SettingsNotifier + AppSettings
 │   │   └── thumbnail_provider.dart    # 缩略图服务 Provider
 │   ├── router/
@@ -127,7 +133,11 @@ lib/
 │   │   └── video_player/
 │   │       ├── speed_control.dart     # 播放速率控制组件
 │   │       ├── video_player_controller.dart # 视频播放器控制器
-│   │       └── video_player_page.dart # 全屏视频播放页
+│   │       ├── video_player_page.dart # 全屏视频播放页
+│   │       ├── play_list_item.dart    # 播放列表项组件（三态视觉区分）
+│   │       ├── windows_play_list_panel.dart # Windows端播放列表面板
+│   │       ├── android_play_list_drawer.dart # Android端播放列表抽屉
+│   │       └── subtitle_controls.dart # 字幕控制组件（支持.srt, .ass, .ssa, .vtt）
 │
 ├── platform/                          # 平台特定实现
 │   ├── android/
@@ -151,6 +161,11 @@ appDatabaseProvider (单例)
       └── bookmarkRepositoryProvider
           └── bookmarkProvider
               └── FileBrowserPage (Consumer)
+
+  └── playQueueDaoProvider
+      └── playQueueRepositoryProvider
+          └── playQueueProvider (StateNotifierProvider)
+              └── VideoPlayerPage (Consumer)
 
 settingsRepositoryProvider
   └── settingsProvider

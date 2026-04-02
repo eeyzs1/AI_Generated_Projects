@@ -97,7 +97,7 @@ flowchart TD
 - Ball-Tree:Ball Tree for k-Dimensional Spaces
 - Annoy:Approximate Nearest Neighbors Oh Yeah
 - IVF:Inverted File
-- FLAT
+- FLAT：L2,IP（Inner Product）
 - PQ:Product Quantization
 - LSH:Locality-Sensitive Hashing
 

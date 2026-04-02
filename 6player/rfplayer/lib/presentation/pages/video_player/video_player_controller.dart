@@ -1,7 +1,9 @@
 import 'package:video_player/video_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import '../../../data/models/play_history.dart' as ph;
 import '../../../presentation/providers/database_provider.dart';
+import '../../../presentation/providers/play_queue_provider.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:path/path.dart' as p;
@@ -9,18 +11,24 @@ import 'package:path/path.dart' as p;
 class MyVideoPlayerController {
   late final VideoPlayerController videoController;
   final String path;
-  final WidgetRef ref;
+  WidgetRef? _ref;
   Timer? _positionTimer;
+  VoidCallback? _videoControllerListener;
   bool _disposed = false;
 
-  MyVideoPlayerController(this.path, this.ref) {
+  MyVideoPlayerController(this.path, WidgetRef ref) {
     videoController = VideoPlayerController.file(File(path));
+    _ref = ref;
   }
 
   Future<void> initialize() async {
+    if (_disposed || _ref == null) return;
+    
     await videoController.initialize();
-
-    final historyRepo = ref.read(historyRepositoryProvider);
+    
+    if (_disposed || _ref == null) return;
+    
+    final historyRepo = _ref!.read(historyRepositoryProvider);
     var history = await historyRepo.getByPath(path);
 
     final duration = videoController.value.duration;
@@ -60,47 +68,142 @@ class MyVideoPlayerController {
     }
 
     // 监听视频控制器的value变化，当duration变化时更新历史记录
-    videoController.addListener(() {
+    _videoControllerListener = () {
+      if (_disposed || _ref == null) return;
+      
       final currentDuration = videoController.value.duration;
       if (currentDuration != Duration.zero) {
-        _updateTotalDuration(currentDuration);
+        // 使用Future.microtask确保在当前帧之后执行，以便有时间检查disposed状态
+        Future.microtask(() async {
+          if (!_disposed && _ref != null) {
+            await _updateCurrentDuration(currentDuration);
+          }
+        });
       }
-    });
+      
+      // 监听视频播放完成事件
+      if (videoController.value.position >= videoController.value.duration && 
+          videoController.value.duration != Duration.zero &&
+          videoController.value.isPlaying) {
+        // 使用Future.microtask确保在当前帧之后执行，以便有时间检查disposed状态
+        Future.microtask(() async {
+          if (!_disposed && _ref != null) {
+            await _handleVideoComplete();
+          }
+        });
+      }
+    };
+    videoController.addListener(_videoControllerListener!);
 
     videoController.play();
 
     // 每1秒更新一次播放位置
     _positionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      updatePlaybackPosition();
+      if (_disposed) {
+        timer.cancel();
+        return;
+      }
+      // 使用Future.microtask确保在当前帧之后执行，以便有时间检查disposed状态
+      Future.microtask(() async {
+        if (!_disposed && _ref != null) {
+          await updatePlaybackPosition();
+        }
+      });
     });
   }
 
-  Future<void> _updateTotalDuration(Duration duration) async {
-    if (_disposed) return;
-    final historyRepo = ref.read(historyRepositoryProvider);
-    var history = await historyRepo.getByPath(path);
-    if (history != null) {
-      // 无论 totalDuration 是 null 还是 Duration.zero，都更新为实际时长
-      final updatedHistory = ph.PlayHistory(
-        id: history.id,
-        path: history.path,
-        displayName: history.displayName,
-        extension: history.extension,
-        type: history.type,
-        lastPosition: history.lastPosition,
-        totalDuration: duration,
-        lastPlayedAt: history.lastPlayedAt,
-        playCount: history.playCount,
-      );
-      await historyRepo.upsert(updatedHistory);
+  Future<void> _updateCurrentDuration(Duration duration) async {
+    if (_disposed || _ref == null) return;
+    
+    try {
+      // 再次检查，因为在异步操作过程中 widget 可能被销毁
+      if (_disposed || _ref == null) return;
+      
+      final historyRepo = _ref!.read(historyRepositoryProvider);
+      
+      // 再次检查，因为在获取 historyRepo 后 widget 可能被销毁
+      if (_disposed || _ref == null) return;
+      
+      var history = await historyRepo.getByPath(path);
+      
+      // 再次检查，因为在异步操作过程中 widget 可能被销毁
+      if (_disposed || _ref == null) return;
+      
+      if (history != null) {
+        // 无论 totalDuration 是 null 还是 Duration.zero，都更新为实际时长
+        final updatedHistory = ph.PlayHistory(
+          id: history.id,
+          path: history.path,
+          displayName: history.displayName,
+          extension: history.extension,
+          type: history.type,
+          lastPosition: history.lastPosition,
+          totalDuration: duration,
+          lastPlayedAt: history.lastPlayedAt,
+          playCount: history.playCount,
+        );
+        
+        // 再次检查，因为在创建 updatedHistory 后 widget 可能被销毁
+        if (_disposed || _ref == null) return;
+        
+        await historyRepo.upsert(updatedHistory);
+      }
+    } catch (e) {
+      print('Error updating current duration: $e');
     }
   }
 
   Future<void> updatePlaybackPosition() async {
-    if (_disposed) return;
-    final position = videoController.value.position;
-    final historyRepo = ref.read(historyRepositoryProvider);
-    await historyRepo.updatePosition(path, position);
+    if (_disposed || _ref == null) return;
+    
+    try {
+      final position = videoController.value.position;
+      final duration = videoController.value.duration;
+      
+      // 更新历史记录
+      if (!_disposed && _ref != null) {
+        try {
+          // 再次检查，因为在异步操作过程中 widget 可能被销毁
+          if (_disposed || _ref == null) return;
+          
+          final historyRepo = _ref!.read(historyRepositoryProvider);
+          
+          // 再次检查，因为在获取 historyRepo 后 widget 可能被销毁
+          if (_disposed || _ref == null) return;
+          
+          await historyRepo.updatePosition(path, position);
+        } catch (e) {
+          print('Error updating history position: $e');
+        }
+      }
+      
+      // 更新播放队列中的播放进度
+      if (duration != Duration.zero && !_disposed && _ref != null) {
+        try {
+          // 再次检查，因为在异步操作过程中 widget 可能被销毁
+          if (_disposed || _ref == null) return;
+          
+          final progress = position.inMilliseconds / duration.inMilliseconds;
+          final playQueueService = _ref!.read(playQueueServiceProvider);
+          
+          // 再次检查，因为在获取 playQueueService 后 widget 可能被销毁
+          if (_disposed || _ref == null) return;
+          
+          final currentPlaying = await playQueueService.getCurrentPlaying();
+          
+          // 再次检查，因为在异步操作过程中 widget 可能被销毁
+          if (_disposed || _ref == null) return;
+          
+          if (currentPlaying != null && currentPlaying.path == path) {
+            await playQueueService.updatePlayProgress(currentPlaying.id, progress);
+          }
+        } catch (e) {
+          print('Error updating play queue progress: $e');
+        }
+      }
+    } catch (e) {
+      print('Error updating playback position: $e');
+    }
   }
 
   void play() {
@@ -147,9 +250,33 @@ class MyVideoPlayerController {
     return videoController;
   }
 
+  // 加载字幕
+  Future<void> loadSubtitle(String subtitlePath) async {
+    try {
+      // 由于FVP是通过VideoPlayerPlatform实现的，我们需要使用其扩展方法
+      // 这里需要根据FVP的实际API来实现
+      // 目前暂时打印日志
+      print('Loading subtitle: $subtitlePath');
+    } catch (e) {
+      print('Error loading subtitle: $e');
+    }
+  }
+
+  // 处理视频播放完成事件
+  Future<void> _handleVideoComplete() async {
+    if (_disposed || _ref == null) return;
+    final playQueueNotifier = _ref!.read(playQueueProvider.notifier);
+    await playQueueNotifier.playNext();
+  }
+
   void dispose() {
     _disposed = true;
+    _ref = null;
     _positionTimer?.cancel();
+    // 移除监听器
+    if (_videoControllerListener != null) {
+      videoController.removeListener(_videoControllerListener!);
+    }
     videoController.dispose();
   }
 }

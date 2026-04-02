@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/thumbnail_provider.dart';
+import '../../providers/play_queue_provider.dart';
 import '../../../data/models/play_history.dart';
 import '../../../data/models/bookmark.dart';
 import 'package:go_router/go_router.dart';
@@ -106,8 +107,14 @@ class HomePage extends ConsumerWidget {
                   ),
                   title: Text(item.displayName),
                   subtitle: Text(item.progressString),
-                  onTap: () {
+                  onTap: () async {
                     if (item.type == MediaType.video) {
+                      // 将视频添加到播放队列
+                      final playQueueNotifier = ref.read(playQueueProvider.notifier);
+                      await playQueueNotifier.addToQueue(item.path, item.displayName);
+                      
+                      // 使用 push 导航到视频播放器页面
+                      // 这样当用户点击返回按钮时，会返回到之前的页面
                       GoRouter.of(context).push('/video-player', extra: item.path);
                     } else {
                       GoRouter.of(context).push('/image-viewer', extra: item.path);
@@ -148,9 +155,14 @@ class HomePage extends ConsumerWidget {
             return ListTile(
               leading: const Icon(Icons.bookmark, size: 40),
               title: Text(bookmark.displayName),
-              onTap: () {
+              onTap: () async {
                 // 这里需要根据文件类型决定打开方式
                 // 暂时默认作为视频打开
+                final playQueueNotifier = ref.read(playQueueProvider.notifier);
+                await playQueueNotifier.addToQueue(bookmark.path, bookmark.displayName);
+                
+                // 使用 push 导航到视频播放器页面
+                // 这样当用户点击返回按钮时，会返回到之前的页面
                 GoRouter.of(context).push('/video-player', extra: bookmark.path);
               },
               trailing: IconButton(

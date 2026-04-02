@@ -1006,6 +1006,577 @@ class BookmarksTableCompanion extends UpdateCompanion<BookmarksTableData> {
   }
 }
 
+class $PlayQueueTableTable extends PlayQueueTable
+    with TableInfo<$PlayQueueTableTable, PlayQueueTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlayQueueTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<int> addedAt = GeneratedColumn<int>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isCurrentPlayingMeta = const VerificationMeta(
+    'isCurrentPlaying',
+  );
+  @override
+  late final GeneratedColumn<int> isCurrentPlaying = GeneratedColumn<int>(
+    'is_current_playing',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _hasPlayedMeta = const VerificationMeta(
+    'hasPlayed',
+  );
+  @override
+  late final GeneratedColumn<int> hasPlayed = GeneratedColumn<int>(
+    'has_played',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _playProgressMeta = const VerificationMeta(
+    'playProgress',
+  );
+  @override
+  late final GeneratedColumn<double> playProgress = GeneratedColumn<double>(
+    'play_progress',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
+  static const VerificationMeta _isInvalidMeta = const VerificationMeta(
+    'isInvalid',
+  );
+  @override
+  late final GeneratedColumn<bool> isInvalid = GeneratedColumn<bool>(
+    'is_invalid',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_invalid" IN (0, 1))',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    path,
+    displayName,
+    sortOrder,
+    addedAt,
+    isCurrentPlaying,
+    hasPlayed,
+    playProgress,
+    isInvalid,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'play_queue_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlayQueueTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sortOrderMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    if (data.containsKey('is_current_playing')) {
+      context.handle(
+        _isCurrentPlayingMeta,
+        isCurrentPlaying.isAcceptableOrUnknown(
+          data['is_current_playing']!,
+          _isCurrentPlayingMeta,
+        ),
+      );
+    }
+    if (data.containsKey('has_played')) {
+      context.handle(
+        _hasPlayedMeta,
+        hasPlayed.isAcceptableOrUnknown(data['has_played']!, _hasPlayedMeta),
+      );
+    }
+    if (data.containsKey('play_progress')) {
+      context.handle(
+        _playProgressMeta,
+        playProgress.isAcceptableOrUnknown(
+          data['play_progress']!,
+          _playProgressMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_invalid')) {
+      context.handle(
+        _isInvalidMeta,
+        isInvalid.isAcceptableOrUnknown(data['is_invalid']!, _isInvalidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_isInvalidMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PlayQueueTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlayQueueTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}added_at'],
+      )!,
+      isCurrentPlaying: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}is_current_playing'],
+      )!,
+      hasPlayed: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}has_played'],
+      )!,
+      playProgress: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}play_progress'],
+      )!,
+      isInvalid: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_invalid'],
+      )!,
+    );
+  }
+
+  @override
+  $PlayQueueTableTable createAlias(String alias) {
+    return $PlayQueueTableTable(attachedDatabase, alias);
+  }
+}
+
+class PlayQueueTableData extends DataClass
+    implements Insertable<PlayQueueTableData> {
+  final String id;
+  final String path;
+  final String displayName;
+  final int sortOrder;
+  final int addedAt;
+  final int isCurrentPlaying;
+  final int hasPlayed;
+  final double playProgress;
+  final bool isInvalid;
+  const PlayQueueTableData({
+    required this.id,
+    required this.path,
+    required this.displayName,
+    required this.sortOrder,
+    required this.addedAt,
+    required this.isCurrentPlaying,
+    required this.hasPlayed,
+    required this.playProgress,
+    required this.isInvalid,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['path'] = Variable<String>(path);
+    map['display_name'] = Variable<String>(displayName);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['added_at'] = Variable<int>(addedAt);
+    map['is_current_playing'] = Variable<int>(isCurrentPlaying);
+    map['has_played'] = Variable<int>(hasPlayed);
+    map['play_progress'] = Variable<double>(playProgress);
+    map['is_invalid'] = Variable<bool>(isInvalid);
+    return map;
+  }
+
+  PlayQueueTableCompanion toCompanion(bool nullToAbsent) {
+    return PlayQueueTableCompanion(
+      id: Value(id),
+      path: Value(path),
+      displayName: Value(displayName),
+      sortOrder: Value(sortOrder),
+      addedAt: Value(addedAt),
+      isCurrentPlaying: Value(isCurrentPlaying),
+      hasPlayed: Value(hasPlayed),
+      playProgress: Value(playProgress),
+      isInvalid: Value(isInvalid),
+    );
+  }
+
+  factory PlayQueueTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlayQueueTableData(
+      id: serializer.fromJson<String>(json['id']),
+      path: serializer.fromJson<String>(json['path']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      addedAt: serializer.fromJson<int>(json['addedAt']),
+      isCurrentPlaying: serializer.fromJson<int>(json['isCurrentPlaying']),
+      hasPlayed: serializer.fromJson<int>(json['hasPlayed']),
+      playProgress: serializer.fromJson<double>(json['playProgress']),
+      isInvalid: serializer.fromJson<bool>(json['isInvalid']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'path': serializer.toJson<String>(path),
+      'displayName': serializer.toJson<String>(displayName),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'addedAt': serializer.toJson<int>(addedAt),
+      'isCurrentPlaying': serializer.toJson<int>(isCurrentPlaying),
+      'hasPlayed': serializer.toJson<int>(hasPlayed),
+      'playProgress': serializer.toJson<double>(playProgress),
+      'isInvalid': serializer.toJson<bool>(isInvalid),
+    };
+  }
+
+  PlayQueueTableData copyWith({
+    String? id,
+    String? path,
+    String? displayName,
+    int? sortOrder,
+    int? addedAt,
+    int? isCurrentPlaying,
+    int? hasPlayed,
+    double? playProgress,
+    bool? isInvalid,
+  }) => PlayQueueTableData(
+    id: id ?? this.id,
+    path: path ?? this.path,
+    displayName: displayName ?? this.displayName,
+    sortOrder: sortOrder ?? this.sortOrder,
+    addedAt: addedAt ?? this.addedAt,
+    isCurrentPlaying: isCurrentPlaying ?? this.isCurrentPlaying,
+    hasPlayed: hasPlayed ?? this.hasPlayed,
+    playProgress: playProgress ?? this.playProgress,
+    isInvalid: isInvalid ?? this.isInvalid,
+  );
+  PlayQueueTableData copyWithCompanion(PlayQueueTableCompanion data) {
+    return PlayQueueTableData(
+      id: data.id.present ? data.id.value : this.id,
+      path: data.path.present ? data.path.value : this.path,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+      isCurrentPlaying: data.isCurrentPlaying.present
+          ? data.isCurrentPlaying.value
+          : this.isCurrentPlaying,
+      hasPlayed: data.hasPlayed.present ? data.hasPlayed.value : this.hasPlayed,
+      playProgress: data.playProgress.present
+          ? data.playProgress.value
+          : this.playProgress,
+      isInvalid: data.isInvalid.present ? data.isInvalid.value : this.isInvalid,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlayQueueTableData(')
+          ..write('id: $id, ')
+          ..write('path: $path, ')
+          ..write('displayName: $displayName, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('isCurrentPlaying: $isCurrentPlaying, ')
+          ..write('hasPlayed: $hasPlayed, ')
+          ..write('playProgress: $playProgress, ')
+          ..write('isInvalid: $isInvalid')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    path,
+    displayName,
+    sortOrder,
+    addedAt,
+    isCurrentPlaying,
+    hasPlayed,
+    playProgress,
+    isInvalid,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlayQueueTableData &&
+          other.id == this.id &&
+          other.path == this.path &&
+          other.displayName == this.displayName &&
+          other.sortOrder == this.sortOrder &&
+          other.addedAt == this.addedAt &&
+          other.isCurrentPlaying == this.isCurrentPlaying &&
+          other.hasPlayed == this.hasPlayed &&
+          other.playProgress == this.playProgress &&
+          other.isInvalid == this.isInvalid);
+}
+
+class PlayQueueTableCompanion extends UpdateCompanion<PlayQueueTableData> {
+  final Value<String> id;
+  final Value<String> path;
+  final Value<String> displayName;
+  final Value<int> sortOrder;
+  final Value<int> addedAt;
+  final Value<int> isCurrentPlaying;
+  final Value<int> hasPlayed;
+  final Value<double> playProgress;
+  final Value<bool> isInvalid;
+  final Value<int> rowid;
+  const PlayQueueTableCompanion({
+    this.id = const Value.absent(),
+    this.path = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.isCurrentPlaying = const Value.absent(),
+    this.hasPlayed = const Value.absent(),
+    this.playProgress = const Value.absent(),
+    this.isInvalid = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PlayQueueTableCompanion.insert({
+    required String id,
+    required String path,
+    required String displayName,
+    required int sortOrder,
+    required int addedAt,
+    this.isCurrentPlaying = const Value.absent(),
+    this.hasPlayed = const Value.absent(),
+    this.playProgress = const Value.absent(),
+    required bool isInvalid,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       path = Value(path),
+       displayName = Value(displayName),
+       sortOrder = Value(sortOrder),
+       addedAt = Value(addedAt),
+       isInvalid = Value(isInvalid);
+  static Insertable<PlayQueueTableData> custom({
+    Expression<String>? id,
+    Expression<String>? path,
+    Expression<String>? displayName,
+    Expression<int>? sortOrder,
+    Expression<int>? addedAt,
+    Expression<int>? isCurrentPlaying,
+    Expression<int>? hasPlayed,
+    Expression<double>? playProgress,
+    Expression<bool>? isInvalid,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (path != null) 'path': path,
+      if (displayName != null) 'display_name': displayName,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (addedAt != null) 'added_at': addedAt,
+      if (isCurrentPlaying != null) 'is_current_playing': isCurrentPlaying,
+      if (hasPlayed != null) 'has_played': hasPlayed,
+      if (playProgress != null) 'play_progress': playProgress,
+      if (isInvalid != null) 'is_invalid': isInvalid,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PlayQueueTableCompanion copyWith({
+    Value<String>? id,
+    Value<String>? path,
+    Value<String>? displayName,
+    Value<int>? sortOrder,
+    Value<int>? addedAt,
+    Value<int>? isCurrentPlaying,
+    Value<int>? hasPlayed,
+    Value<double>? playProgress,
+    Value<bool>? isInvalid,
+    Value<int>? rowid,
+  }) {
+    return PlayQueueTableCompanion(
+      id: id ?? this.id,
+      path: path ?? this.path,
+      displayName: displayName ?? this.displayName,
+      sortOrder: sortOrder ?? this.sortOrder,
+      addedAt: addedAt ?? this.addedAt,
+      isCurrentPlaying: isCurrentPlaying ?? this.isCurrentPlaying,
+      hasPlayed: hasPlayed ?? this.hasPlayed,
+      playProgress: playProgress ?? this.playProgress,
+      isInvalid: isInvalid ?? this.isInvalid,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<int>(addedAt.value);
+    }
+    if (isCurrentPlaying.present) {
+      map['is_current_playing'] = Variable<int>(isCurrentPlaying.value);
+    }
+    if (hasPlayed.present) {
+      map['has_played'] = Variable<int>(hasPlayed.value);
+    }
+    if (playProgress.present) {
+      map['play_progress'] = Variable<double>(playProgress.value);
+    }
+    if (isInvalid.present) {
+      map['is_invalid'] = Variable<bool>(isInvalid.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlayQueueTableCompanion(')
+          ..write('id: $id, ')
+          ..write('path: $path, ')
+          ..write('displayName: $displayName, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('isCurrentPlaying: $isCurrentPlaying, ')
+          ..write('hasPlayed: $hasPlayed, ')
+          ..write('playProgress: $playProgress, ')
+          ..write('isInvalid: $isInvalid, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1013,8 +1584,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $BookmarksTableTable bookmarksTable = $BookmarksTableTable(this);
+  late final $PlayQueueTableTable playQueueTable = $PlayQueueTableTable(this);
   late final HistoryDao historyDao = HistoryDao(this as AppDatabase);
   late final BookmarkDao bookmarkDao = BookmarkDao(this as AppDatabase);
+  late final PlayQueueDao playQueueDao = PlayQueueDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1022,6 +1595,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     playHistoryTable,
     bookmarksTable,
+    playQueueTable,
   ];
 }
 
@@ -1548,6 +2122,294 @@ typedef $$BookmarksTableTableProcessedTableManager =
       BookmarksTableData,
       PrefetchHooks Function()
     >;
+typedef $$PlayQueueTableTableCreateCompanionBuilder =
+    PlayQueueTableCompanion Function({
+      required String id,
+      required String path,
+      required String displayName,
+      required int sortOrder,
+      required int addedAt,
+      Value<int> isCurrentPlaying,
+      Value<int> hasPlayed,
+      Value<double> playProgress,
+      required bool isInvalid,
+      Value<int> rowid,
+    });
+typedef $$PlayQueueTableTableUpdateCompanionBuilder =
+    PlayQueueTableCompanion Function({
+      Value<String> id,
+      Value<String> path,
+      Value<String> displayName,
+      Value<int> sortOrder,
+      Value<int> addedAt,
+      Value<int> isCurrentPlaying,
+      Value<int> hasPlayed,
+      Value<double> playProgress,
+      Value<bool> isInvalid,
+      Value<int> rowid,
+    });
+
+class $$PlayQueueTableTableFilterComposer
+    extends Composer<_$AppDatabase, $PlayQueueTableTable> {
+  $$PlayQueueTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isCurrentPlaying => $composableBuilder(
+    column: $table.isCurrentPlaying,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get hasPlayed => $composableBuilder(
+    column: $table.hasPlayed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get playProgress => $composableBuilder(
+    column: $table.playProgress,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isInvalid => $composableBuilder(
+    column: $table.isInvalid,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PlayQueueTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $PlayQueueTableTable> {
+  $$PlayQueueTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isCurrentPlaying => $composableBuilder(
+    column: $table.isCurrentPlaying,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get hasPlayed => $composableBuilder(
+    column: $table.hasPlayed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get playProgress => $composableBuilder(
+    column: $table.playProgress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isInvalid => $composableBuilder(
+    column: $table.isInvalid,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PlayQueueTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PlayQueueTableTable> {
+  $$PlayQueueTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get isCurrentPlaying => $composableBuilder(
+    column: $table.isCurrentPlaying,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get hasPlayed =>
+      $composableBuilder(column: $table.hasPlayed, builder: (column) => column);
+
+  GeneratedColumn<double> get playProgress => $composableBuilder(
+    column: $table.playProgress,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isInvalid =>
+      $composableBuilder(column: $table.isInvalid, builder: (column) => column);
+}
+
+class $$PlayQueueTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PlayQueueTableTable,
+          PlayQueueTableData,
+          $$PlayQueueTableTableFilterComposer,
+          $$PlayQueueTableTableOrderingComposer,
+          $$PlayQueueTableTableAnnotationComposer,
+          $$PlayQueueTableTableCreateCompanionBuilder,
+          $$PlayQueueTableTableUpdateCompanionBuilder,
+          (
+            PlayQueueTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $PlayQueueTableTable,
+              PlayQueueTableData
+            >,
+          ),
+          PlayQueueTableData,
+          PrefetchHooks Function()
+        > {
+  $$PlayQueueTableTableTableManager(
+    _$AppDatabase db,
+    $PlayQueueTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlayQueueTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlayQueueTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlayQueueTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> path = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> addedAt = const Value.absent(),
+                Value<int> isCurrentPlaying = const Value.absent(),
+                Value<int> hasPlayed = const Value.absent(),
+                Value<double> playProgress = const Value.absent(),
+                Value<bool> isInvalid = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlayQueueTableCompanion(
+                id: id,
+                path: path,
+                displayName: displayName,
+                sortOrder: sortOrder,
+                addedAt: addedAt,
+                isCurrentPlaying: isCurrentPlaying,
+                hasPlayed: hasPlayed,
+                playProgress: playProgress,
+                isInvalid: isInvalid,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String path,
+                required String displayName,
+                required int sortOrder,
+                required int addedAt,
+                Value<int> isCurrentPlaying = const Value.absent(),
+                Value<int> hasPlayed = const Value.absent(),
+                Value<double> playProgress = const Value.absent(),
+                required bool isInvalid,
+                Value<int> rowid = const Value.absent(),
+              }) => PlayQueueTableCompanion.insert(
+                id: id,
+                path: path,
+                displayName: displayName,
+                sortOrder: sortOrder,
+                addedAt: addedAt,
+                isCurrentPlaying: isCurrentPlaying,
+                hasPlayed: hasPlayed,
+                playProgress: playProgress,
+                isInvalid: isInvalid,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PlayQueueTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PlayQueueTableTable,
+      PlayQueueTableData,
+      $$PlayQueueTableTableFilterComposer,
+      $$PlayQueueTableTableOrderingComposer,
+      $$PlayQueueTableTableAnnotationComposer,
+      $$PlayQueueTableTableCreateCompanionBuilder,
+      $$PlayQueueTableTableUpdateCompanionBuilder,
+      (
+        PlayQueueTableData,
+        BaseReferences<_$AppDatabase, $PlayQueueTableTable, PlayQueueTableData>,
+      ),
+      PlayQueueTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1556,4 +2418,6 @@ class $AppDatabaseManager {
       $$PlayHistoryTableTableTableManager(_db, _db.playHistoryTable);
   $$BookmarksTableTableTableManager get bookmarksTable =>
       $$BookmarksTableTableTableManager(_db, _db.bookmarksTable);
+  $$PlayQueueTableTableTableManager get playQueueTable =>
+      $$PlayQueueTableTableTableManager(_db, _db.playQueueTable);
 }

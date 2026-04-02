@@ -19,7 +19,13 @@ final appRouter = GoRouter(
         GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       ],
     ),
-    GoRoute(path: '/video-player', builder: (_, state) => VideoPlayerPage(path: state.extra as String)),
+    GoRoute(
+      path: '/video-player',
+      builder: (_, state) {
+        final path = state.extra as String;
+        return VideoPlayerPage(path: path);
+      },
+    ),
     GoRoute(path: '/image-viewer', builder: (_, state) => ImageViewerPage(path: state.extra as String)),
   ],
 );

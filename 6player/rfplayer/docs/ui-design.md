@@ -231,42 +231,126 @@ SettingsPage (ConsumerWidget)
 
 ## 视频播放页（VideoPlayerPage）
 
-**职责**：全屏视频播放，支持手势控制，自动保存播放进度。
+**职责**：全屏视频播放，支持手势控制，自动保存播放进度，集成播放队列功能。
 
 ### Widget 树
 
+**Windows 端**：
 ```
 VideoPlayerPage (ConsumerWidget)
 └── Scaffold(backgroundColor: black)
+    └── Row
+        ├── Expanded
+        │   └── Stack
+        │       ├── Video(controller: videoController)  ← fvp_video，填满屏幕
+        │       └── PlayerOverlay
+        │           └── GestureDetector
+        │               ├── onTap → toggleControlsVisibility()
+        │               ├── onHorizontalDragUpdate → seekPreview()
+        │               ├── onVerticalDragUpdate (左半屏) → adjustBrightness()
+        │               └── onVerticalDragUpdate (右半屏) → adjustVolume()
+        │               └── AnimatedOpacity(opacity: controlsVisible ? 1.0 : 0.0)
+        │                   └── Column
+        │                       ├── TopBar
+        │                       │   ├── BackButton → router.pop() + savePosition()
+        │                       │   └── Text(currentFileName)
+        │                       ├── Spacer
+        │                       └── BottomControls
+        │                           ├── ProgressBar
+        │                           │   ├── Slider(value: position/duration)
+        │                           │   ├── Text(currentPosition)
+        │                           │   └── Text(totalDuration)
+        │                           └── ControlRow
+        │                               ├── IconButton(skip_previous)
+        │                               ├── IconButton(play_arrow / pause)
+        │                               ├── IconButton(skip_next)
+        │                               ├── VolumeButton
+        │                               ├── SpeedControl
+        │                               │   ├── DropdownButton(固定档位)
+        │                               │   ├── Slider(0.25-4.0, 0.01精度)
+        │                               │   └── TextField(1.00x)
+        │                               ├── SubtitleButton
+        │                               │   └── SubtitleControls
+        │                               │       ├── 加载外部字幕文件
+        │                               │       ├── 字幕选择下拉菜单
+        │                               │       ├── 显示/隐藏控制
+        │                               └── AppBarVisibilityButton
+        └── WindowsPlayListPanel (宽度 300px)
+            ├── PanelHeader
+            │   ├── Text("播放列表")
+            │   └── IconButton(clear) → 清空队列
+            ├── Expanded
+            │   └── ReorderableListView.builder
+            │       └── PlayListItem × N
+            │           ├── Icon(item.isCurrentPlaying ? play_arrow : item.hasPlayed ? check : queue_music)
+            │           ├── Text(item.displayName, maxLines: 1, style: TextStyle(
+            │           │   fontWeight: item.isCurrentPlaying ? FontWeight.bold : FontWeight.normal,
+            │           │   color: item.hasPlayed ? Colors.grey : Colors.black,
+            │           │   backgroundColor: item.isCurrentPlaying ? Colors.blue[100] : null,
+            │           ))
+            │           ├── IconButton(delete) → 移除项
+            │           └── onTap → 播放该项
+            └── ControlButtons
+                ├── ElevatedButton(上一个)
+                ├── ElevatedButton(下一个)
+                └── ElevatedButton(清空)
+```
+
+**Android 端**：
+```
+VideoPlayerPage (ConsumerWidget)
+└── Scaffold(backgroundColor: black)
+    ├── AppBar (可隐藏)
+    │   ├── BackButton
+    │   ├── Text(currentFileName)
+    │   └── IconButton(playlist_play) → 切换播放列表抽屉
     └── Stack
         ├── Video(controller: videoController)  ← fvp_video，填满屏幕
-        └── PlayerOverlay
-            └── GestureDetector
-                ├── onTap → toggleControlsVisibility()
-                ├── onHorizontalDragUpdate → seekPreview()
-                ├── onVerticalDragUpdate (左半屏) → adjustBrightness()
-                └── onVerticalDragUpdate (右半屏) → adjustVolume()
-                └── AnimatedOpacity(opacity: controlsVisible ? 1.0 : 0.0)
-                    └── Column
-                        ├── TopBar
-                        │   ├── BackButton → router.pop() + savePosition()
-                        │   └── Text(currentFileName)
-                        ├── Spacer
-                        └── BottomControls
-                            ├── ProgressBar
-                            │   ├── Slider(value: position/duration)
-                            │   ├── Text(currentPosition)
-                            │   └── Text(totalDuration)
-                            └── ControlRow
-                                ├── IconButton(skip_previous)
-                                ├── IconButton(play_arrow / pause)
-                                ├── IconButton(skip_next)
-                                ├── VolumeButton
-                                ├── SpeedControl
-                                │   ├── DropdownButton(固定档位)
-                                │   ├── Slider(0.25-4.0, 0.01精度)
-                                │   └── TextField(1.00x)
-                                └── AppBarVisibilityButton
+        ├── PlayerOverlay
+        │   └── GestureDetector
+        │       ├── onTap → toggleControlsVisibility()
+        │       ├── onHorizontalDragUpdate → seekPreview()
+        │       ├── onVerticalDragUpdate (左半屏) → adjustBrightness()
+        │       └── onVerticalDragUpdate (右半屏) → adjustVolume()
+        │       └── AnimatedOpacity(opacity: controlsVisible ? 1.0 : 0.0)
+        │           └── Column
+        │               ├── Spacer
+        │               └── BottomControls
+        │                   ├── ProgressBar
+        │                   │   ├── Slider(value: position/duration)
+        │                   │   ├── Text(currentPosition)
+        │                   │   └── Text(totalDuration)
+        │                   └── ControlRow
+        │                       ├── IconButton(skip_previous)
+        │                       ├── IconButton(play_arrow / pause)
+        │                       ├── IconButton(skip_next)
+        │                       ├── VolumeButton
+        │                       ├── SpeedControl
+        │                       └── SubtitleButton
+        │                           └── SubtitleControls
+        │                               ├── 加载外部字幕文件
+        │                               ├── 字幕选择下拉菜单
+        │                               ├── 显示/隐藏控制
+        └── Positioned(bottom: 0)
+            └── AndroidPlayListDrawer (高度 60%)
+                ├── DrawerHeader
+                │   ├── Text("播放列表")
+                │   └── IconButton(close) → 关闭抽屉
+                ├── Expanded
+                │   └── ListView.builder
+                │       └── PlayListItem × N
+                │           ├── Icon(item.isCurrentPlaying ? play_arrow : item.hasPlayed ? check : queue_music)
+                │           ├── Text(item.displayName, maxLines: 1, style: TextStyle(
+                │           │   fontWeight: item.isCurrentPlaying ? FontWeight.bold : FontWeight.normal,
+                │           │   color: item.hasPlayed ? Colors.grey : Colors.black,
+                │           │   backgroundColor: item.isCurrentPlaying ? Colors.blue[100] : null,
+                │           ))
+                │           ├── IconButton(delete) → 移除项
+                │           └── onTap → 播放该项
+                └── ControlButtons
+                    ├── ElevatedButton(上一个)
+                    ├── ElevatedButton(下一个)
+                    └── ElevatedButton(清空)
 ```
 
 ### PlayerState
