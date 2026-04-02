@@ -16,17 +16,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db_lib_rust')))
 
 # Try to import all implementations
-try:
-    import vector_db_cpp
-except ImportError:
-    print("Warning: vector_db_cpp not available")
-    vector_db_cpp = None
-
 # try:
-#     import vector_db_rust
+#     import vector_db_cpp
 # except ImportError:
-#     print("Warning: vector_db_rust not available")
-vector_db_rust = None
+#     print("Warning: vector_db_cpp not available")
+#     vector_db_cpp = None
+vector_db_cpp = None
+
+try:
+    import vector_db_rust
+except ImportError:
+    print("Warning: vector_db_rust not available")
+# vector_db_rust = None
 
 try:
     import faiss
@@ -183,7 +184,7 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         
         # 使用峰值内存测量添加向量
         def add_vectors_rust():
-            index_rust.add(vectors.tolist())
+            index_rust.add_buf(vectors)
         
         start_time = time.time()
         _, memory_usage = get_memory_peak(add_vectors_rust)
@@ -198,7 +199,9 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         # Test search
         start_time = time.time()
         for i in range(num_queries):
-            labels, distances = index_rust.search(queries[i].tolist(), k)
+            # 重塑查询向量为2D数组 (1, dimension)
+            query_2d = queries[i].reshape(1, -1)
+            labels, distances = index_rust.search_buf(query_2d, k)
         search_time = time.time() - start_time
         print(f"Search time: {search_time:.4f}s")
         
