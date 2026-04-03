@@ -39,18 +39,13 @@ impl FlatIndex {
             ));
         }
 
-        // 批量扩展，减少内存分配次数
         let num_vectors = vectors.len();
         let total_elements = num_vectors * self.dimension;
         
-        // 一次性分配所有内存
         let current_len = self.vectors.len();
         self.vectors.reserve_exact(current_len + total_elements);
-        
-        // 直接扩展容量，避免多次分配
         self.vectors.resize(current_len + total_elements, 0.0f32);
         
-        // 顺序处理向量数据，使用更高效的内存操作
         let mut offset = current_len;
         for vec in vectors {
             if vec.len() != self.dimension {
@@ -58,14 +53,11 @@ impl FlatIndex {
                     "All vectors must have the same dimension",
                 ));
             }
-            // 直接拷贝数据到预分配的空间
             self.vectors[offset..offset + self.dimension].copy_from_slice(&vec);
             offset += self.dimension;
         }
 
         self.size += num_vectors;
-
-        // 转置数据以优化内存布局
         self.transpose_data();
 
         Ok(())
@@ -74,7 +66,6 @@ impl FlatIndex {
     fn add_buf(&mut self, buffer: &Bound<'_, PyAny>) -> PyResult<()> {
         use pyo3::buffer::PyBuffer;
         
-        // 尝试将输入转换为缓冲区
         let buffer = PyBuffer::<f32>::get(buffer)?;
         let dimensions = buffer.dimensions();
         
@@ -100,17 +91,12 @@ impl FlatIndex {
             ));
         }
         
-        // 批量扩展，减少内存分配次数
         let total_elements = num_vectors * self.dimension;
         
-        // 一次性分配所有内存
         let current_len = self.vectors.len();
         self.vectors.reserve_exact(current_len + total_elements);
-        
-        // 直接扩展容量，避免多次分配
         self.vectors.resize(current_len + total_elements, 0.0f32);
         
-        // 直接拷贝数据到预分配的空间
         let buffer_ptr = buffer.buf_ptr() as *const f32;
         unsafe {
             std::ptr::copy_nonoverlapping(
@@ -121,8 +107,6 @@ impl FlatIndex {
         }
 
         self.size += num_vectors;
-
-        // 转置数据以优化内存布局
         self.transpose_data();
         
         Ok(())
@@ -139,19 +123,15 @@ impl FlatIndex {
             ));
         }
 
-        // 对于小数据集，直接使用优化的单线程搜索以避免多线程开销
         if self.size <= 10000 {
             return self.search_single(&query, k);
         }
 
-        // 计算最优线程数
-        let num_threads = self.calculate_optimal_threads();
+        let num_threads = self.calculate_optimal_search_threads();
 
         if num_threads > 1 {
-            // 并行搜索
             self.search_parallel(&query, k)
         } else {
-            // 单线程搜索
             self.search_single(&query, k)
         }
     }
@@ -163,7 +143,6 @@ impl FlatIndex {
             return Ok((Vec::new(), Vec::new()));
         }
         
-        // 尝试将输入转换为缓冲区
         let buffer = PyBuffer::<f32>::get(buffer)?;
         let dimensions = buffer.dimensions();
         
@@ -191,7 +170,6 @@ impl FlatIndex {
             ));
         }
         
-        // 直接获取缓冲区数据
         let mut query_vec = Vec::with_capacity(dim);
         let buffer_ptr = buffer.buf_ptr() as *const f32;
         unsafe {
@@ -201,21 +179,89 @@ impl FlatIndex {
             }
         }
         
-        // 计算最优线程数
-        // 对于小数据集，直接使用优化的单线程搜索以避免多线程开销
         if self.size <= 10000 {
             return self.search_single(&query_vec, k);
         }
 
-        let num_threads = self.calculate_optimal_threads();
+        let num_threads = self.calculate_optimal_search_threads();
 
         if num_threads > 1 {
-            // 并行搜索
             self.search_parallel(&query_vec, k)
         } else {
-            // 单线程搜索
             self.search_single(&query_vec, k)
         }
+    }
+
+    fn search_batch_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
+        use pyo3::buffer::PyBuffer;
+        
+        if self.size == 0 {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        
+        let buffer = PyBuffer::<f32>::get(buffer)?;
+        let dimensions = buffer.dimensions();
+        
+        if dimensions != 2 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Input must be a 2D array",
+            ));
+        }
+        
+        let shape = buffer.shape();
+        let num_queries = shape[0];
+        let dim = shape[1];
+        
+        if dim != self.dimension {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Query vector dimension mismatch",
+            ));
+        }
+        
+        let mut queries = Vec::with_capacity(num_queries);
+        let buffer_ptr = buffer.buf_ptr() as *const f32;
+        
+        unsafe {
+            for i in 0..num_queries {
+                let mut query = Vec::with_capacity(dim);
+                for j in 0..dim {
+                    let value = *buffer_ptr.offset((i * dim + j) as isize);
+                    query.push(value);
+                }
+                queries.push(query);
+            }
+        }
+        
+        let mut all_labels = Vec::with_capacity(num_queries);
+        let mut all_distances = Vec::with_capacity(num_queries);
+        
+        let num_threads = self.calculate_optimal_search_threads();
+        
+        // 如果查询很多，用查询级并行；否则用向量级并行
+        if num_threads > 1 && num_queries > 10 {
+            let results: Vec<(Vec<i64>, Vec<f32>)> = queries.par_iter()
+                .map(|query| {
+                    self.search_single(query, k).unwrap()
+                })
+                .collect();
+            
+            for (labels, distances) in results {
+                all_labels.push(labels);
+                all_distances.push(distances);
+            }
+        } else {
+            for query in queries {
+                let (labels, distances) = if self.size <= 10000 {
+                    self.search_single(&query, k)?
+                } else {
+                    self.search_parallel(&query, k)?
+                };
+                all_labels.push(labels);
+                all_distances.push(distances);
+            }
+        }
+        
+        Ok((all_labels, all_distances))
     }
 
     fn size(&self) -> usize {
@@ -228,35 +274,104 @@ impl FlatIndex {
 }
 
 impl FlatIndex {
-    // 计算最优线程数
+    #[inline]
+    fn insert_top_k(&self, distances: &mut [f32], labels: &mut [i64], k: usize, dist: f32, idx: i64) {
+        if dist >= distances[k-1] {
+            return;
+        }
+        
+        // 二分查找定位插入位置
+        let mut left = 0;
+        let mut right = k;
+        while left < right {
+            let mid = (left + right) / 2;
+            if dist < distances[mid] {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+
+        if left < k {
+            // 使用 ptr::copy 进行高效的批量移动
+            unsafe {
+                let move_count = k - left - 1;
+                if move_count > 0 {
+                    std::ptr::copy(
+                        distances.as_ptr().add(left),
+                        distances.as_mut_ptr().add(left + 1),
+                        move_count
+                    );
+                    std::ptr::copy(
+                        labels.as_ptr().add(left),
+                        labels.as_mut_ptr().add(left + 1),
+                        move_count
+                    );
+                }
+                distances[left] = dist;
+                labels[left] = idx;
+            }
+        }
+    }
+
+    #[inline]
+    fn calculate_optimal_search_threads(&self) -> usize {
+        let num_threads = num_cpus::get();
+        
+        let num_threads = if self.size > 500000 {
+            std::cmp::min(num_threads, 10)
+        } else if self.size > 100000 {
+            std::cmp::min(num_threads, 6)
+        } else if self.size > 10000 {
+            std::cmp::min(num_threads, 4)
+        } else {
+            1
+        };
+
+        if self.dimension > 256 {
+            std::cmp::max(1, num_threads / 2)
+        } else if self.dimension > 128 {
+            std::cmp::max(1, num_threads)
+        } else {
+            num_threads
+        }
+    }
+
+    #[inline]
     fn calculate_optimal_threads(&self) -> usize {
         let num_threads = num_cpus::get();
         
-        // 根据数据集大小和维度调整线程数
-        let mut num_threads = if self.size > 1000000 {
-            std::cmp::min(num_threads, 16)  // 大数据集可以用更多线程
+        let num_threads = if self.size > 1000000 {
+            std::cmp::min(num_threads, 16)
+        } else if self.size > 200000 {
+            std::cmp::min(num_threads, 10)
         } else if self.size > 100000 {
-            std::cmp::min(num_threads, 8)   // 中等数据集
+            std::cmp::min(num_threads, 6)
         } else if self.size > 10000 {
-            std::cmp::min(num_threads, 4)   // 小数据集用较少线程
+            std::cmp::min(num_threads, 4)
         } else {
-            1  // 极小数据集用单线程避免开销
+            1
         };
 
-        // 对于高维向量，减少线程数以避免内存带宽瓶颈
         if self.dimension > 512 {
-            num_threads = std::cmp::max(1, num_threads / 4);
+            std::cmp::max(1, num_threads / 2)
         } else if self.dimension > 256 {
-            num_threads = std::cmp::max(1, num_threads / 2);
+            std::cmp::max(1, num_threads)
+        } else {
+            num_threads
         }
-
-        num_threads
     }
 
-    // 转置数据以优化内存布局
     fn transpose_data(&mut self) {
-        // 大数据集时不转置（stride 太大会破坏缓存）
-        if self.size > 100000 {
+        // 对于128D和256D，转置开销太大，直接不转置！
+        if self.dimension == 128 || self.dimension == 256 {
+            self.transposed = false;
+            self.vectors_transposed.clear();
+            self.vectors_transposed.shrink_to_fit();
+            return;
+        }
+        
+        if self.size > 200000 {
             self.transposed = false;
             self.vectors_transposed.clear();
             self.vectors_transposed.shrink_to_fit();
@@ -267,10 +382,8 @@ impl FlatIndex {
             return;
         }
 
-        // 分配转置后的数据空间
         self.vectors_transposed.resize(self.size * self.dimension, 0.0f32);
 
-        // 执行转置操作：将行优先转换为列优先
         for i in 0..self.size {
             for j in 0..self.dimension {
                 self.vectors_transposed[j * self.size + i] = self.vectors[i * self.dimension + j];
@@ -280,46 +393,320 @@ impl FlatIndex {
         self.transposed = true;
     }
 
-    // 计算L2距离（使用SIMD优化）
     #[inline]
     fn compute_l2_distance(&self, query: &[f32], vec: &[f32]) -> f32 {
         let dim = self.dimension;
 
         #[cfg(target_arch = "x86_64")]
         unsafe {
-            if dim >= 32 {
-                // 使用更多的寄存器重用和循环展开来最大化吞吐量
+            if dim == 128 {
+                let mut sum0 = _mm256_setzero_ps();
+                let mut sum1 = _mm256_setzero_ps();
+                let mut sum2 = _mm256_setzero_ps();
+                let mut sum3 = _mm256_setzero_ps();
+
+                // 预取未来的数据
+                std::arch::x86_64::_mm_prefetch(
+                    vec.as_ptr().add(128) as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+
+                let q0 = _mm256_loadu_ps(query.as_ptr());
+                let v0 = _mm256_loadu_ps(vec.as_ptr());
+                let diff0 = _mm256_sub_ps(q0, v0);
+                sum0 = _mm256_fmadd_ps(diff0, diff0, sum0);
+
+                let q1 = _mm256_loadu_ps(query.as_ptr().add(8));
+                let v1 = _mm256_loadu_ps(vec.as_ptr().add(8));
+                let diff1 = _mm256_sub_ps(q1, v1);
+                sum1 = _mm256_fmadd_ps(diff1, diff1, sum1);
+
+                let q2 = _mm256_loadu_ps(query.as_ptr().add(16));
+                let v2 = _mm256_loadu_ps(vec.as_ptr().add(16));
+                let diff2 = _mm256_sub_ps(q2, v2);
+                sum2 = _mm256_fmadd_ps(diff2, diff2, sum2);
+
+                let q3 = _mm256_loadu_ps(query.as_ptr().add(24));
+                let v3 = _mm256_loadu_ps(vec.as_ptr().add(24));
+                let diff3 = _mm256_sub_ps(q3, v3);
+                sum3 = _mm256_fmadd_ps(diff3, diff3, sum3);
+
+                let q4 = _mm256_loadu_ps(query.as_ptr().add(32));
+                let v4 = _mm256_loadu_ps(vec.as_ptr().add(32));
+                let diff4 = _mm256_sub_ps(q4, v4);
+                sum0 = _mm256_fmadd_ps(diff4, diff4, sum0);
+
+                let q5 = _mm256_loadu_ps(query.as_ptr().add(40));
+                let v5 = _mm256_loadu_ps(vec.as_ptr().add(40));
+                let diff5 = _mm256_sub_ps(q5, v5);
+                sum1 = _mm256_fmadd_ps(diff5, diff5, sum1);
+
+                let q6 = _mm256_loadu_ps(query.as_ptr().add(48));
+                let v6 = _mm256_loadu_ps(vec.as_ptr().add(48));
+                let diff6 = _mm256_sub_ps(q6, v6);
+                sum2 = _mm256_fmadd_ps(diff6, diff6, sum2);
+
+                let q7 = _mm256_loadu_ps(query.as_ptr().add(56));
+                let v7 = _mm256_loadu_ps(vec.as_ptr().add(56));
+                let diff7 = _mm256_sub_ps(q7, v7);
+                sum3 = _mm256_fmadd_ps(diff7, diff7, sum3);
+
+                let q8 = _mm256_loadu_ps(query.as_ptr().add(64));
+                let v8 = _mm256_loadu_ps(vec.as_ptr().add(64));
+                let diff8 = _mm256_sub_ps(q8, v8);
+                sum0 = _mm256_fmadd_ps(diff8, diff8, sum0);
+
+                let q9 = _mm256_loadu_ps(query.as_ptr().add(72));
+                let v9 = _mm256_loadu_ps(vec.as_ptr().add(72));
+                let diff9 = _mm256_sub_ps(q9, v9);
+                sum1 = _mm256_fmadd_ps(diff9, diff9, sum1);
+
+                let q10 = _mm256_loadu_ps(query.as_ptr().add(80));
+                let v10 = _mm256_loadu_ps(vec.as_ptr().add(80));
+                let diff10 = _mm256_sub_ps(q10, v10);
+                sum2 = _mm256_fmadd_ps(diff10, diff10, sum2);
+
+                let q11 = _mm256_loadu_ps(query.as_ptr().add(88));
+                let v11 = _mm256_loadu_ps(vec.as_ptr().add(88));
+                let diff11 = _mm256_sub_ps(q11, v11);
+                sum3 = _mm256_fmadd_ps(diff11, diff11, sum3);
+
+                let q12 = _mm256_loadu_ps(query.as_ptr().add(96));
+                let v12 = _mm256_loadu_ps(vec.as_ptr().add(96));
+                let diff12 = _mm256_sub_ps(q12, v12);
+                sum0 = _mm256_fmadd_ps(diff12, diff12, sum0);
+
+                let q13 = _mm256_loadu_ps(query.as_ptr().add(104));
+                let v13 = _mm256_loadu_ps(vec.as_ptr().add(104));
+                let diff13 = _mm256_sub_ps(q13, v13);
+                sum1 = _mm256_fmadd_ps(diff13, diff13, sum1);
+
+                let q14 = _mm256_loadu_ps(query.as_ptr().add(112));
+                let v14 = _mm256_loadu_ps(vec.as_ptr().add(112));
+                let diff14 = _mm256_sub_ps(q14, v14);
+                sum2 = _mm256_fmadd_ps(diff14, diff14, sum2);
+
+                let q15 = _mm256_loadu_ps(query.as_ptr().add(120));
+                let v15 = _mm256_loadu_ps(vec.as_ptr().add(120));
+                let diff15 = _mm256_sub_ps(q15, v15);
+                sum3 = _mm256_fmadd_ps(diff15, diff15, sum3);
+
+                let sum_a = _mm256_add_ps(sum0, sum1);
+                let sum_b = _mm256_add_ps(sum2, sum3);
+                let sum = _mm256_add_ps(sum_a, sum_b);
+
+                // 使用更好的水平求和方法，参考C++实现
+                let shuffled = _mm256_permute2f128_ps(sum, sum, 0x21);
+                let summed = _mm256_add_ps(sum, shuffled);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let summed = _mm256_hadd_ps(summed, summed);
+                _mm256_cvtss_f32(summed)
+            } else if dim == 256 {
+                let mut sum0 = _mm256_setzero_ps();
+                let mut sum1 = _mm256_setzero_ps();
+                let mut sum2 = _mm256_setzero_ps();
+                let mut sum3 = _mm256_setzero_ps();
+                let mut sum4 = _mm256_setzero_ps();
+                let mut sum5 = _mm256_setzero_ps();
+                let mut sum6 = _mm256_setzero_ps();
+                let mut sum7 = _mm256_setzero_ps();
+
+                // 预取未来的数据
+                std::arch::x86_64::_mm_prefetch(
+                    vec.as_ptr().add(128) as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+
+                // 完全展开，去除循环，像128D那样
+                let q0 = _mm256_loadu_ps(query.as_ptr());
+                let v0 = _mm256_loadu_ps(vec.as_ptr());
+                let diff0 = _mm256_sub_ps(q0, v0);
+                sum0 = _mm256_fmadd_ps(diff0, diff0, sum0);
+
+                let q1 = _mm256_loadu_ps(query.as_ptr().add(8));
+                let v1 = _mm256_loadu_ps(vec.as_ptr().add(8));
+                let diff1 = _mm256_sub_ps(q1, v1);
+                sum1 = _mm256_fmadd_ps(diff1, diff1, sum1);
+
+                let q2 = _mm256_loadu_ps(query.as_ptr().add(16));
+                let v2 = _mm256_loadu_ps(vec.as_ptr().add(16));
+                let diff2 = _mm256_sub_ps(q2, v2);
+                sum2 = _mm256_fmadd_ps(diff2, diff2, sum2);
+
+                let q3 = _mm256_loadu_ps(query.as_ptr().add(24));
+                let v3 = _mm256_loadu_ps(vec.as_ptr().add(24));
+                let diff3 = _mm256_sub_ps(q3, v3);
+                sum3 = _mm256_fmadd_ps(diff3, diff3, sum3);
+
+                let q4 = _mm256_loadu_ps(query.as_ptr().add(32));
+                let v4 = _mm256_loadu_ps(vec.as_ptr().add(32));
+                let diff4 = _mm256_sub_ps(q4, v4);
+                sum4 = _mm256_fmadd_ps(diff4, diff4, sum4);
+
+                let q5 = _mm256_loadu_ps(query.as_ptr().add(40));
+                let v5 = _mm256_loadu_ps(vec.as_ptr().add(40));
+                let diff5 = _mm256_sub_ps(q5, v5);
+                sum5 = _mm256_fmadd_ps(diff5, diff5, sum5);
+
+                let q6 = _mm256_loadu_ps(query.as_ptr().add(48));
+                let v6 = _mm256_loadu_ps(vec.as_ptr().add(48));
+                let diff6 = _mm256_sub_ps(q6, v6);
+                sum6 = _mm256_fmadd_ps(diff6, diff6, sum6);
+
+                let q7 = _mm256_loadu_ps(query.as_ptr().add(56));
+                let v7 = _mm256_loadu_ps(vec.as_ptr().add(56));
+                let diff7 = _mm256_sub_ps(q7, v7);
+                sum7 = _mm256_fmadd_ps(diff7, diff7, sum7);
+
+                let q8 = _mm256_loadu_ps(query.as_ptr().add(64));
+                let v8 = _mm256_loadu_ps(vec.as_ptr().add(64));
+                let diff8 = _mm256_sub_ps(q8, v8);
+                sum0 = _mm256_fmadd_ps(diff8, diff8, sum0);
+
+                let q9 = _mm256_loadu_ps(query.as_ptr().add(72));
+                let v9 = _mm256_loadu_ps(vec.as_ptr().add(72));
+                let diff9 = _mm256_sub_ps(q9, v9);
+                sum1 = _mm256_fmadd_ps(diff9, diff9, sum1);
+
+                let q10 = _mm256_loadu_ps(query.as_ptr().add(80));
+                let v10 = _mm256_loadu_ps(vec.as_ptr().add(80));
+                let diff10 = _mm256_sub_ps(q10, v10);
+                sum2 = _mm256_fmadd_ps(diff10, diff10, sum2);
+
+                let q11 = _mm256_loadu_ps(query.as_ptr().add(88));
+                let v11 = _mm256_loadu_ps(vec.as_ptr().add(88));
+                let diff11 = _mm256_sub_ps(q11, v11);
+                sum3 = _mm256_fmadd_ps(diff11, diff11, sum3);
+
+                let q12 = _mm256_loadu_ps(query.as_ptr().add(96));
+                let v12 = _mm256_loadu_ps(vec.as_ptr().add(96));
+                let diff12 = _mm256_sub_ps(q12, v12);
+                sum4 = _mm256_fmadd_ps(diff12, diff12, sum4);
+
+                let q13 = _mm256_loadu_ps(query.as_ptr().add(104));
+                let v13 = _mm256_loadu_ps(vec.as_ptr().add(104));
+                let diff13 = _mm256_sub_ps(q13, v13);
+                sum5 = _mm256_fmadd_ps(diff13, diff13, sum5);
+
+                let q14 = _mm256_loadu_ps(query.as_ptr().add(112));
+                let v14 = _mm256_loadu_ps(vec.as_ptr().add(112));
+                let diff14 = _mm256_sub_ps(q14, v14);
+                sum6 = _mm256_fmadd_ps(diff14, diff14, sum6);
+
+                let q15 = _mm256_loadu_ps(query.as_ptr().add(120));
+                let v15 = _mm256_loadu_ps(vec.as_ptr().add(120));
+                let diff15 = _mm256_sub_ps(q15, v15);
+                sum7 = _mm256_fmadd_ps(diff15, diff15, sum7);
+
+                let q16 = _mm256_loadu_ps(query.as_ptr().add(128));
+                let v16 = _mm256_loadu_ps(vec.as_ptr().add(128));
+                let diff16 = _mm256_sub_ps(q16, v16);
+                sum0 = _mm256_fmadd_ps(diff16, diff16, sum0);
+
+                let q17 = _mm256_loadu_ps(query.as_ptr().add(136));
+                let v17 = _mm256_loadu_ps(vec.as_ptr().add(136));
+                let diff17 = _mm256_sub_ps(q17, v17);
+                sum1 = _mm256_fmadd_ps(diff17, diff17, sum1);
+
+                let q18 = _mm256_loadu_ps(query.as_ptr().add(144));
+                let v18 = _mm256_loadu_ps(vec.as_ptr().add(144));
+                let diff18 = _mm256_sub_ps(q18, v18);
+                sum2 = _mm256_fmadd_ps(diff18, diff18, sum2);
+
+                let q19 = _mm256_loadu_ps(query.as_ptr().add(152));
+                let v19 = _mm256_loadu_ps(vec.as_ptr().add(152));
+                let diff19 = _mm256_sub_ps(q19, v19);
+                sum3 = _mm256_fmadd_ps(diff19, diff19, sum3);
+
+                let q20 = _mm256_loadu_ps(query.as_ptr().add(160));
+                let v20 = _mm256_loadu_ps(vec.as_ptr().add(160));
+                let diff20 = _mm256_sub_ps(q20, v20);
+                sum4 = _mm256_fmadd_ps(diff20, diff20, sum4);
+
+                let q21 = _mm256_loadu_ps(query.as_ptr().add(168));
+                let v21 = _mm256_loadu_ps(vec.as_ptr().add(168));
+                let diff21 = _mm256_sub_ps(q21, v21);
+                sum5 = _mm256_fmadd_ps(diff21, diff21, sum5);
+
+                let q22 = _mm256_loadu_ps(query.as_ptr().add(176));
+                let v22 = _mm256_loadu_ps(vec.as_ptr().add(176));
+                let diff22 = _mm256_sub_ps(q22, v22);
+                sum6 = _mm256_fmadd_ps(diff22, diff22, sum6);
+
+                let q23 = _mm256_loadu_ps(query.as_ptr().add(184));
+                let v23 = _mm256_loadu_ps(vec.as_ptr().add(184));
+                let diff23 = _mm256_sub_ps(q23, v23);
+                sum7 = _mm256_fmadd_ps(diff23, diff23, sum7);
+
+                let q24 = _mm256_loadu_ps(query.as_ptr().add(192));
+                let v24 = _mm256_loadu_ps(vec.as_ptr().add(192));
+                let diff24 = _mm256_sub_ps(q24, v24);
+                sum0 = _mm256_fmadd_ps(diff24, diff24, sum0);
+
+                let q25 = _mm256_loadu_ps(query.as_ptr().add(200));
+                let v25 = _mm256_loadu_ps(vec.as_ptr().add(200));
+                let diff25 = _mm256_sub_ps(q25, v25);
+                sum1 = _mm256_fmadd_ps(diff25, diff25, sum1);
+
+                let q26 = _mm256_loadu_ps(query.as_ptr().add(208));
+                let v26 = _mm256_loadu_ps(vec.as_ptr().add(208));
+                let diff26 = _mm256_sub_ps(q26, v26);
+                sum2 = _mm256_fmadd_ps(diff26, diff26, sum2);
+
+                let q27 = _mm256_loadu_ps(query.as_ptr().add(216));
+                let v27 = _mm256_loadu_ps(vec.as_ptr().add(216));
+                let diff27 = _mm256_sub_ps(q27, v27);
+                sum3 = _mm256_fmadd_ps(diff27, diff27, sum3);
+
+                let q28 = _mm256_loadu_ps(query.as_ptr().add(224));
+                let v28 = _mm256_loadu_ps(vec.as_ptr().add(224));
+                let diff28 = _mm256_sub_ps(q28, v28);
+                sum4 = _mm256_fmadd_ps(diff28, diff28, sum4);
+
+                let q29 = _mm256_loadu_ps(query.as_ptr().add(232));
+                let v29 = _mm256_loadu_ps(vec.as_ptr().add(232));
+                let diff29 = _mm256_sub_ps(q29, v29);
+                sum5 = _mm256_fmadd_ps(diff29, diff29, sum5);
+
+                let q30 = _mm256_loadu_ps(query.as_ptr().add(240));
+                let v30 = _mm256_loadu_ps(vec.as_ptr().add(240));
+                let diff30 = _mm256_sub_ps(q30, v30);
+                sum6 = _mm256_fmadd_ps(diff30, diff30, sum6);
+
+                let q31 = _mm256_loadu_ps(query.as_ptr().add(248));
+                let v31 = _mm256_loadu_ps(vec.as_ptr().add(248));
+                let diff31 = _mm256_sub_ps(q31, v31);
+                sum7 = _mm256_fmadd_ps(diff31, diff31, sum7);
+
+                let sum_a = _mm256_add_ps(sum0, sum1);
+                let sum_b = _mm256_add_ps(sum2, sum3);
+                let sum_c = _mm256_add_ps(sum4, sum5);
+                let sum_d = _mm256_add_ps(sum6, sum7);
+                let sum_ab = _mm256_add_ps(sum_a, sum_b);
+                let sum_cd = _mm256_add_ps(sum_c, sum_d);
+                let sum = _mm256_add_ps(sum_ab, sum_cd);
+
+                // 使用更好的水平求和方法，参考C++实现
+                let shuffled = _mm256_permute2f128_ps(sum, sum, 0x21);
+                let summed = _mm256_add_ps(sum, shuffled);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let summed = _mm256_hadd_ps(summed, summed);
+                _mm256_cvtss_f32(summed)
+            } else if dim >= 64 {
                 let mut i = 0;
                 let mut sum0 = _mm256_setzero_ps();
                 let mut sum1 = _mm256_setzero_ps();
                 let mut sum2 = _mm256_setzero_ps();
                 let mut sum3 = _mm256_setzero_ps();
 
-                // 预取整个向量，减少内存延迟
-                std::arch::x86_64::_mm_prefetch(
-                    vec.as_ptr() as *const i8,
-                    std::arch::x86_64::_MM_HINT_T0
-                );
-                std::arch::x86_64::_mm_prefetch(
-                    query.as_ptr() as *const i8,
-                    std::arch::x86_64::_MM_HINT_T0
-                );
-
-                let end = dim - 31;
+                let end = dim - 63;
                 while i < end {
-                    // 预取未来数据
-                    if i + 64 < dim {
-                        std::arch::x86_64::_mm_prefetch(
-                            vec.as_ptr().add(i + 64) as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0
-                        );
-                        std::arch::x86_64::_mm_prefetch(
-                            query.as_ptr().add(i + 64) as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0
-                        );
-                    }
-
-                    // 加载数据并计算距离 - 每次处理32个元素
+                    // 预取未来的数据，参考C++实现
+                    std::arch::x86_64::_mm_prefetch(
+                        vec.as_ptr().add(i + 128) as *const i8,
+                        std::arch::x86_64::_MM_HINT_T0
+                    );
+                    
                     let q0 = _mm256_loadu_ps(query.as_ptr().add(i));
                     let v0 = _mm256_loadu_ps(vec.as_ptr().add(i));
                     let diff0 = _mm256_sub_ps(q0, v0);
@@ -340,23 +727,83 @@ impl FlatIndex {
                     let diff3 = _mm256_sub_ps(q3, v3);
                     sum3 = _mm256_fmadd_ps(diff3, diff3, sum3);
 
+                    let q4 = _mm256_loadu_ps(query.as_ptr().add(i + 32));
+                    let v4 = _mm256_loadu_ps(vec.as_ptr().add(i + 32));
+                    let diff4 = _mm256_sub_ps(q4, v4);
+                    sum0 = _mm256_fmadd_ps(diff4, diff4, sum0);
+
+                    let q5 = _mm256_loadu_ps(query.as_ptr().add(i + 40));
+                    let v5 = _mm256_loadu_ps(vec.as_ptr().add(i + 40));
+                    let diff5 = _mm256_sub_ps(q5, v5);
+                    sum1 = _mm256_fmadd_ps(diff5, diff5, sum1);
+
+                    let q6 = _mm256_loadu_ps(query.as_ptr().add(i + 48));
+                    let v6 = _mm256_loadu_ps(vec.as_ptr().add(i + 48));
+                    let diff6 = _mm256_sub_ps(q6, v6);
+                    sum2 = _mm256_fmadd_ps(diff6, diff6, sum2);
+
+                    let q7 = _mm256_loadu_ps(query.as_ptr().add(i + 56));
+                    let v7 = _mm256_loadu_ps(vec.as_ptr().add(i + 56));
+                    let diff7 = _mm256_sub_ps(q7, v7);
+                    sum3 = _mm256_fmadd_ps(diff7, diff7, sum3);
+
+                    i += 64;
+                }
+
+                let sum_a = _mm256_add_ps(sum0, sum1);
+                let sum_b = _mm256_add_ps(sum2, sum3);
+                let sum = _mm256_add_ps(sum_a, sum_b);
+
+                let shuffled = _mm256_permute2f128_ps(sum, sum, 0x21);
+                let summed = _mm256_add_ps(sum, shuffled);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let mut dist = _mm256_cvtss_f32(summed);
+
+                while i < dim {
+                    let diff = query[i] - vec[i];
+                    dist += diff * diff;
+                    i += 1;
+                }
+                dist
+            } else if dim >= 32 {
+                let mut i = 0;
+                let mut sum0 = _mm256_setzero_ps();
+                let mut sum1 = _mm256_setzero_ps();
+
+                let end = dim - 31;
+                while i < end {
+                    let q0 = _mm256_loadu_ps(query.as_ptr().add(i));
+                    let v0 = _mm256_loadu_ps(vec.as_ptr().add(i));
+                    let diff0 = _mm256_sub_ps(q0, v0);
+                    sum0 = _mm256_fmadd_ps(diff0, diff0, sum0);
+
+                    let q1 = _mm256_loadu_ps(query.as_ptr().add(i + 8));
+                    let v1 = _mm256_loadu_ps(vec.as_ptr().add(i + 8));
+                    let diff1 = _mm256_sub_ps(q1, v1);
+                    sum1 = _mm256_fmadd_ps(diff1, diff1, sum1);
+
+                    let q2 = _mm256_loadu_ps(query.as_ptr().add(i + 16));
+                    let v2 = _mm256_loadu_ps(vec.as_ptr().add(i + 16));
+                    let diff2 = _mm256_sub_ps(q2, v2);
+                    sum0 = _mm256_fmadd_ps(diff2, diff2, sum0);
+
+                    let q3 = _mm256_loadu_ps(query.as_ptr().add(i + 24));
+                    let v3 = _mm256_loadu_ps(vec.as_ptr().add(i + 24));
+                    let diff3 = _mm256_sub_ps(q3, v3);
+                    sum1 = _mm256_fmadd_ps(diff3, diff3, sum1);
+
                     i += 32;
                 }
 
-                // 合并部分和
-                let sum_lo = _mm256_add_ps(sum0, sum1);
-                let sum_hi = _mm256_add_ps(sum2, sum3);
-                let sum = _mm256_add_ps(sum_lo, sum_hi);
+                let sum = _mm256_add_ps(sum0, sum1);
 
-                // 水平求和
-                let hi128 = _mm256_extractf128_ps(sum, 1);
-                let lo128 = _mm256_castps256_ps128(sum);
-                let sum128 = _mm_add_ps(lo128, hi128);
-                let sum64 = _mm_hadd_ps(sum128, sum128);
-                let sum32 = _mm_hadd_ps(sum64, sum64);
-                let mut dist = _mm_cvtss_f32(sum32);
+                let shuffled = _mm256_permute2f128_ps(sum, sum, 0x21);
+                let summed = _mm256_add_ps(sum, shuffled);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let mut dist = _mm256_cvtss_f32(summed);
 
-                // 处理剩余维度
                 while i < dim {
                     let diff = query[i] - vec[i];
                     dist += diff * diff;
@@ -367,30 +814,8 @@ impl FlatIndex {
                 let mut i = 0;
                 let mut sum = _mm256_setzero_ps();
 
-                // 预取整个向量
-                std::arch::x86_64::_mm_prefetch(
-                    vec.as_ptr() as *const i8,
-                    std::arch::x86_64::_MM_HINT_T0
-                );
-                std::arch::x86_64::_mm_prefetch(
-                    query.as_ptr() as *const i8,
-                    std::arch::x86_64::_MM_HINT_T0
-                );
-
                 let end = dim - 7;
                 while i < end {
-                    // 预取未来数据
-                    if i + 16 < dim {
-                        std::arch::x86_64::_mm_prefetch(
-                            vec.as_ptr().add(i + 16) as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0
-                        );
-                        std::arch::x86_64::_mm_prefetch(
-                            query.as_ptr().add(i + 16) as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0
-                        );
-                    }
-
                     let q = _mm256_loadu_ps(query.as_ptr().add(i));
                     let v = _mm256_loadu_ps(vec.as_ptr().add(i));
                     let diff = _mm256_sub_ps(q, v);
@@ -398,15 +823,12 @@ impl FlatIndex {
                     i += 8;
                 }
 
-                // 水平求和
-                let hi128 = _mm256_extractf128_ps(sum, 1);
-                let lo128 = _mm256_castps256_ps128(sum);
-                let sum128 = _mm_add_ps(lo128, hi128);
-                let sum64 = _mm_hadd_ps(sum128, sum128);
-                let sum32 = _mm_hadd_ps(sum64, sum64);
-                let mut dist = _mm_cvtss_f32(sum32);
+                let shuffled = _mm256_permute2f128_ps(sum, sum, 0x21);
+                let summed = _mm256_add_ps(sum, shuffled);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let summed = _mm256_hadd_ps(summed, summed);
+                let mut dist = _mm256_cvtss_f32(summed);
 
-                // 处理剩余维度
                 while i < dim {
                     let diff = query[i] - vec[i];
                     dist += diff * diff;
@@ -434,38 +856,17 @@ impl FlatIndex {
         }
     }
 
-    // 批量计算距离（使用转置数据）
     #[inline]
     fn compute_batch_distances_transposed(&self, query: &[f32], start_idx: usize, batch_size: usize, distances: &mut [f32]) {
         #[cfg(target_arch = "x86_64")]
         unsafe {
-            // 对每个维度，一次性处理8个向量
             for vec_offset in (0..batch_size).step_by(8) {
                 let mut dist_vec = _mm256_setzero_ps();
-                
-                // 计算实际要处理的向量数（处理不足8个的情况）
                 let actual_batch_size = std::cmp::min(8, batch_size - vec_offset);
-                
                 let base_ptr = self.vectors_transposed.as_ptr().add(start_idx + vec_offset);
 
-                // 预取整个数据块
-                std::arch::x86_64::_mm_prefetch(
-                    base_ptr as *const i8,
-                    std::arch::x86_64::_MM_HINT_T0
-                );
-
-                // 循环展开：每次处理16个维度，提高SIMD利用率
                 let mut dim_idx = 0;
-                while dim_idx + 15 < self.dimension {
-                    // 预取未来的数据
-                    if dim_idx + 32 < self.dimension {
-                        std::arch::x86_64::_mm_prefetch(
-                            base_ptr.add((dim_idx + 32) * self.size) as *const i8,
-                            std::arch::x86_64::_MM_HINT_T0
-                        );
-                    }
-
-                    // 处理16个维度，每次1个
+                while dim_idx + 31 < self.dimension {
                     let q0 = _mm256_set1_ps(query[dim_idx]);
                     let v0 = _mm256_loadu_ps(base_ptr.add(dim_idx * self.size));
                     let diff0 = _mm256_sub_ps(q0, v0);
@@ -546,10 +947,89 @@ impl FlatIndex {
                     let diff15 = _mm256_sub_ps(q15, v15);
                     dist_vec = _mm256_fmadd_ps(diff15, diff15, dist_vec);
 
-                    dim_idx += 16;
+                    let q16 = _mm256_set1_ps(query[dim_idx + 16]);
+                    let v16 = _mm256_loadu_ps(base_ptr.add((dim_idx + 16) * self.size));
+                    let diff16 = _mm256_sub_ps(q16, v16);
+                    dist_vec = _mm256_fmadd_ps(diff16, diff16, dist_vec);
+
+                    let q17 = _mm256_set1_ps(query[dim_idx + 17]);
+                    let v17 = _mm256_loadu_ps(base_ptr.add((dim_idx + 17) * self.size));
+                    let diff17 = _mm256_sub_ps(q17, v17);
+                    dist_vec = _mm256_fmadd_ps(diff17, diff17, dist_vec);
+
+                    let q18 = _mm256_set1_ps(query[dim_idx + 18]);
+                    let v18 = _mm256_loadu_ps(base_ptr.add((dim_idx + 18) * self.size));
+                    let diff18 = _mm256_sub_ps(q18, v18);
+                    dist_vec = _mm256_fmadd_ps(diff18, diff18, dist_vec);
+
+                    let q19 = _mm256_set1_ps(query[dim_idx + 19]);
+                    let v19 = _mm256_loadu_ps(base_ptr.add((dim_idx + 19) * self.size));
+                    let diff19 = _mm256_sub_ps(q19, v19);
+                    dist_vec = _mm256_fmadd_ps(diff19, diff19, dist_vec);
+
+                    let q20 = _mm256_set1_ps(query[dim_idx + 20]);
+                    let v20 = _mm256_loadu_ps(base_ptr.add((dim_idx + 20) * self.size));
+                    let diff20 = _mm256_sub_ps(q20, v20);
+                    dist_vec = _mm256_fmadd_ps(diff20, diff20, dist_vec);
+
+                    let q21 = _mm256_set1_ps(query[dim_idx + 21]);
+                    let v21 = _mm256_loadu_ps(base_ptr.add((dim_idx + 21) * self.size));
+                    let diff21 = _mm256_sub_ps(q21, v21);
+                    dist_vec = _mm256_fmadd_ps(diff21, diff21, dist_vec);
+
+                    let q22 = _mm256_set1_ps(query[dim_idx + 22]);
+                    let v22 = _mm256_loadu_ps(base_ptr.add((dim_idx + 22) * self.size));
+                    let diff22 = _mm256_sub_ps(q22, v22);
+                    dist_vec = _mm256_fmadd_ps(diff22, diff22, dist_vec);
+
+                    let q23 = _mm256_set1_ps(query[dim_idx + 23]);
+                    let v23 = _mm256_loadu_ps(base_ptr.add((dim_idx + 23) * self.size));
+                    let diff23 = _mm256_sub_ps(q23, v23);
+                    dist_vec = _mm256_fmadd_ps(diff23, diff23, dist_vec);
+
+                    let q24 = _mm256_set1_ps(query[dim_idx + 24]);
+                    let v24 = _mm256_loadu_ps(base_ptr.add((dim_idx + 24) * self.size));
+                    let diff24 = _mm256_sub_ps(q24, v24);
+                    dist_vec = _mm256_fmadd_ps(diff24, diff24, dist_vec);
+
+                    let q25 = _mm256_set1_ps(query[dim_idx + 25]);
+                    let v25 = _mm256_loadu_ps(base_ptr.add((dim_idx + 25) * self.size));
+                    let diff25 = _mm256_sub_ps(q25, v25);
+                    dist_vec = _mm256_fmadd_ps(diff25, diff25, dist_vec);
+
+                    let q26 = _mm256_set1_ps(query[dim_idx + 26]);
+                    let v26 = _mm256_loadu_ps(base_ptr.add((dim_idx + 26) * self.size));
+                    let diff26 = _mm256_sub_ps(q26, v26);
+                    dist_vec = _mm256_fmadd_ps(diff26, diff26, dist_vec);
+
+                    let q27 = _mm256_set1_ps(query[dim_idx + 27]);
+                    let v27 = _mm256_loadu_ps(base_ptr.add((dim_idx + 27) * self.size));
+                    let diff27 = _mm256_sub_ps(q27, v27);
+                    dist_vec = _mm256_fmadd_ps(diff27, diff27, dist_vec);
+
+                    let q28 = _mm256_set1_ps(query[dim_idx + 28]);
+                    let v28 = _mm256_loadu_ps(base_ptr.add((dim_idx + 28) * self.size));
+                    let diff28 = _mm256_sub_ps(q28, v28);
+                    dist_vec = _mm256_fmadd_ps(diff28, diff28, dist_vec);
+
+                    let q29 = _mm256_set1_ps(query[dim_idx + 29]);
+                    let v29 = _mm256_loadu_ps(base_ptr.add((dim_idx + 29) * self.size));
+                    let diff29 = _mm256_sub_ps(q29, v29);
+                    dist_vec = _mm256_fmadd_ps(diff29, diff29, dist_vec);
+
+                    let q30 = _mm256_set1_ps(query[dim_idx + 30]);
+                    let v30 = _mm256_loadu_ps(base_ptr.add((dim_idx + 30) * self.size));
+                    let diff30 = _mm256_sub_ps(q30, v30);
+                    dist_vec = _mm256_fmadd_ps(diff30, diff30, dist_vec);
+
+                    let q31 = _mm256_set1_ps(query[dim_idx + 31]);
+                    let v31 = _mm256_loadu_ps(base_ptr.add((dim_idx + 31) * self.size));
+                    let diff31 = _mm256_sub_ps(q31, v31);
+                    dist_vec = _mm256_fmadd_ps(diff31, diff31, dist_vec);
+
+                    dim_idx += 32;
                 }
 
-                // 处理剩余维度
                 while dim_idx < self.dimension {
                     let q_broadcast = _mm256_set1_ps(query[dim_idx]);
                     let v_vals = _mm256_loadu_ps(base_ptr.add(dim_idx * self.size));
@@ -558,11 +1038,9 @@ impl FlatIndex {
                     dim_idx += 1;
                 }
 
-                // 只存储实际需要的数量
                 match actual_batch_size {
                     8 => _mm256_storeu_ps(distances.as_mut_ptr().add(vec_offset), dist_vec),
                     n => {
-                        // 对于小于8的情况，只存储前n个值
                         let mut temp_array = [0.0f32; 8];
                         _mm256_storeu_ps(temp_array.as_mut_ptr(), dist_vec);
                         for i in 0..n {
@@ -588,359 +1066,81 @@ impl FlatIndex {
         }
     }
 
-    // 单线程搜索
     fn search_single(&self, query: &[f32], k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
-        // 使用固定大小的数组来维护top-k结果
         let mut top_distances = vec![f32::MAX; k];
         let mut top_labels = vec![0i64; k];
 
-        // 如果k为0或没有向量，则返回空结果
         if k == 0 || self.size == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
 
-        if self.transposed {
-            // 动态分块：小数据集用大块，大数据集用小块
-            let block_size = if self.size < 200000 {
-                std::cmp::min(16384, self.size)
-            } else {
-                std::cmp::min(4096, self.size)
-            };
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            // 预取查询向量到缓存，参考C++实现
+            std::arch::x86_64::_mm_prefetch(
+                query.as_ptr() as *const i8,
+                std::arch::x86_64::_MM_HINT_T0
+            );
+            if query.len() > 64 {
+                std::arch::x86_64::_mm_prefetch(
+                    query.as_ptr().add(64) as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+            }
+            if query.len() > 128 {
+                std::arch::x86_64::_mm_prefetch(
+                    query.as_ptr().add(128) as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+            }
+            if query.len() > 192 {
+                std::arch::x86_64::_mm_prefetch(
+                    query.as_ptr().add(192) as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+            }
+        }
 
-            // 使用栈上分配的数组，减少内存分配开销
+        if self.transposed {
+            let block_size = std::cmp::min(4096, self.size);
+
             let mut batch_dists = [0.0f32; 16384];
 
-            // 分块处理
             for block_start in (0..self.size).step_by(block_size) {
                 let block_end = std::cmp::min(block_start + block_size, self.size);
                 let block_len = block_end - block_start;
 
-                // 批量计算当前块的所有距离
                 for i in (0..block_len).step_by(8) {
                     let batch = std::cmp::min(8, block_len - i);
                     self.compute_batch_distances_transposed(query, block_start + i, batch, &mut batch_dists[i..i+batch]);
                 }
 
-                // 更新top-k：优化top-k更新逻辑
                 for i in 0..block_len {
                     let dist = batch_dists[i];
-                    
-                    // 快速路径：如果距离大于等于当前最大距离，跳过
-                    if dist >= top_distances[k-1] {
-                        continue;
-                    }
-                    
-                    // 查找插入位置
-                    let mut pos = k - 1;
-                    while pos > 0 && dist < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-
-                    // 如果找到了有效位置，插入新值并移动其他元素
-                    if pos < k {
-                        // 移动元素，从后往前避免覆盖
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        
-                        // 插入新值
-                        top_distances[pos] = dist;
-                        top_labels[pos] = (block_start + i) as i64;
-                    }
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist, (block_start + i) as i64);
                 }
             }
         } else {
-            // 使用原始数据进行搜索
-            // 针对大数据集优化：使用更高效的内存访问模式
             let mut vec_ptr = self.vectors.as_ptr();
             let dim = self.dimension;
 
-            // 循环展开：每次处理8个向量，减少分支开销
             let mut i = 0;
-            while i + 7 < self.size {
-                // 软件预取，减少内存访问延迟
-                unsafe {
-                    std::arch::x86_64::_mm_prefetch(
-                        vec_ptr.add(dim * 8) as *const i8,
-                        std::arch::x86_64::_MM_HINT_T0
-                    );
-                    std::arch::x86_64::_mm_prefetch(
-                        vec_ptr.add(dim * 16) as *const i8,
-                        std::arch::x86_64::_MM_HINT_T0
-                    );
-                }
-
-                // 计算8个向量的距离
-                let dist0 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr, dim) });
-                let dist1 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(dim), dim) });
-                let dist2 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(2 * dim), dim) });
-                let dist3 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(3 * dim), dim) });
-                let dist4 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(4 * dim), dim) });
-                let dist5 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(5 * dim), dim) });
-                let dist6 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(6 * dim), dim) });
-                let dist7 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(7 * dim), dim) });
-
-                // 处理第一个向量
-                if dist0 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist0 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist0;
-                        top_labels[pos] = i as i64;
-                    }
-                }
-
-                // 处理第二个向量
-                if dist1 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist1 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist1;
-                        top_labels[pos] = (i + 1) as i64;
-                    }
-                }
-
-                // 处理第三个向量
-                if dist2 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist2 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist2;
-                        top_labels[pos] = (i + 2) as i64;
-                    }
-                }
-
-                // 处理第四个向量
-                if dist3 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist3 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist3;
-                        top_labels[pos] = (i + 3) as i64;
-                    }
-                }
-
-                // 处理第五个向量
-                if dist4 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist4 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist4;
-                        top_labels[pos] = (i + 4) as i64;
-                    }
-                }
-
-                // 处理第六个向量
-                if dist5 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist5 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist5;
-                        top_labels[pos] = (i + 5) as i64;
-                    }
-                }
-
-                // 处理第七个向量
-                if dist6 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist6 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist6;
-                        top_labels[pos] = (i + 6) as i64;
-                    }
-                }
-
-                // 处理第八个向量
-                if dist7 < top_distances[k-1] {
-                    let mut pos = k - 1;
-                    while pos > 0 && dist7 < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-                    if pos < k {
-                        for j in (pos + 1..k).rev() {
-                            top_distances[j] = top_distances[j - 1];
-                            top_labels[j] = top_labels[j - 1];
-                        }
-                        top_distances[pos] = dist7;
-                        top_labels[pos] = (i + 7) as i64;
-                    }
-                }
-
-                vec_ptr = unsafe { vec_ptr.add(8 * dim) };
-                i += 8;
-            }
-
-            // 处理剩余的向量
-            for j in i..self.size {
-                let vec = unsafe { std::slice::from_raw_parts(vec_ptr, dim) };
-                let dist = self.compute_l2_distance(query, vec);
-
-                if dist < top_distances[k-1] {
-                    // 查找插入位置
-                    let mut pos = k - 1;
-                    while pos > 0 && dist < top_distances[pos - 1] {
-                        pos -= 1;
-                    }
-
-                    // 如果找到了有效位置，插入新值并移动其他元素
-                    if pos < k {
-                        // 移动元素，从后往前避免覆盖
-                        for m in (pos + 1..k).rev() {
-                            top_distances[m] = top_distances[m - 1];
-                            top_labels[m] = top_labels[m - 1];
-                        }
-                        
-                        // 插入新值
-                        top_distances[pos] = dist;
-                        top_labels[pos] = j as i64;
-                    }
-                }
-                vec_ptr = unsafe { vec_ptr.add(dim) };
-            }
-        }
-
-        Ok((top_labels, top_distances))
-    }
-
-    // 并行搜索
-    fn search_parallel(&self, query: &[f32], k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
-        // 对于小数据集，使用单线程搜索
-        if self.size <= 10000 {
-            return self.search_single(query, k);
-        }
-
-        let num_threads = self.calculate_optimal_threads();
-
-        // 计算每个线程处理的向量数量，确保每个线程至少处理1000个向量
-        let min_vectors_per_thread = 1000;
-        let max_threads = std::cmp::min(num_threads, self.size / min_vectors_per_thread + 1);
-        let max_threads = std::cmp::max(1, max_threads);
-
-        let vectors_per_thread = self.size / max_threads;
-        let remainder = self.size % max_threads;
-
-        // 使用线程局部存储来减少线程间竞争
-        let mut thread_results = vec![(vec![f32::MAX; k], vec![0i64; k]); max_threads];
-
-        // 并行处理
-        thread_results.par_iter_mut().enumerate().for_each(|(t, (thread_distances, thread_labels))| {
-            let start = t * vectors_per_thread + std::cmp::min(t, remainder);
-            let end = start + vectors_per_thread + if t < remainder { 1 } else { 0 };
-
-            // 初始化线程局部结果
-            for i in 0..k {
-                thread_distances[i] = f32::MAX;
-                thread_labels[i] = 0;
-            }
-
-            if self.transposed {
-                // 使用转置数据进行搜索，一次性计算多个向量
-                let batch_size = 16384;
-                let mut batch_dists = [0.0f32; 16384];
-
-                // 批量处理
-                let mut i = start;
-                while i < end {
-                    let current_batch_size = std::cmp::min(batch_size, end - i);
-
-                    // 批量计算当前块的所有距离
-                    for j in (0..current_batch_size).step_by(8) {
-                        let sub_batch_size = std::cmp::min(8, current_batch_size - j);
-                        self.compute_batch_distances_transposed(query, i + j, sub_batch_size, &mut batch_dists[j..j+sub_batch_size]);
-                    }
-
-                    // 更新top-k
-                    for j in 0..current_batch_size {
-                        let dist = batch_dists[j];
-                        if dist < thread_distances[k-1] {
-                            // 使用二分查找来找到插入位置，时间复杂度为 O(log k)
-                            let mut left = 0;
-                            let mut right = k;
-                            while left < right {
-                                let mid = (left + right) / 2;
-                                if dist < thread_distances[mid] {
-                                    right = mid;
-                                } else {
-                                    left = mid + 1;
-                                }
-                            }
-
-                            if left < k {
-                                // 批量移动数据
-                                thread_distances.copy_within(left..k-1, left+1);
-                                thread_labels.copy_within(left..k-1, left+1);
-                                thread_distances[left] = dist;
-                                thread_labels[left] = (i + j) as i64;
-                            }
-                        }
-                    }
-
-                    i += current_batch_size;
-                }
-            } else {
-                // 使用原始数据进行搜索
-                let dim = self.dimension;
-                let mut vec_ptr = unsafe { self.vectors.as_ptr().add(start * dim) };
-                let mut i = start;
-
-                // 循环展开：每次处理8个向量，减少分支开销
-                while i + 7 < end {
+            if dim == 128 || dim == 256 {
+                // 对128D和256D专门优化，每次处理8个向量，参考C++实现
+                while i + 7 < self.size {
                     // 软件预取，减少内存访问延迟
+                    #[cfg(target_arch = "x86_64")]
                     unsafe {
                         std::arch::x86_64::_mm_prefetch(
-                            vec_ptr.add(dim * 8) as *const i8,
+                            vec_ptr.add(8 * dim) as *const i8,
                             std::arch::x86_64::_MM_HINT_T0
                         );
                         std::arch::x86_64::_mm_prefetch(
-                            vec_ptr.add(dim * 16) as *const i8,
+                            vec_ptr.add(16 * dim) as *const i8,
                             std::arch::x86_64::_MM_HINT_T0
                         );
                     }
 
-                    // 计算8个向量的距离
                     let dist0 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr, dim) });
                     let dist1 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(dim), dim) });
                     let dist2 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(2 * dim), dim) });
@@ -950,202 +1150,233 @@ impl FlatIndex {
                     let dist6 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(6 * dim), dim) });
                     let dist7 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(7 * dim), dim) });
 
-                    // 处理第一个向量
-                    if dist0 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist0 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist0;
-                            thread_labels[left] = i as i64;
-                        }
-                    }
-
-                    // 处理第二个向量
-                    if dist1 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist1 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist1;
-                            thread_labels[left] = (i + 1) as i64;
-                        }
-                    }
-
-                    // 处理第三个向量
-                    if dist2 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist2 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist2;
-                            thread_labels[left] = (i + 2) as i64;
-                        }
-                    }
-
-                    // 处理第四个向量
-                    if dist3 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist3 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist3;
-                            thread_labels[left] = (i + 3) as i64;
-                        }
-                    }
-
-                    // 处理第五个向量
-                    if dist4 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist4 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist4;
-                            thread_labels[left] = (i + 4) as i64;
-                        }
-                    }
-
-                    // 处理第六个向量
-                    if dist5 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist5 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist5;
-                            thread_labels[left] = (i + 5) as i64;
-                        }
-                    }
-
-                    // 处理第七个向量
-                    if dist6 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist6 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist6;
-                            thread_labels[left] = (i + 6) as i64;
-                        }
-                    }
-
-                    // 处理第八个向量
-                    if dist7 < thread_distances[k-1] {
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist7 < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        if left < k {
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist7;
-                            thread_labels[left] = (i + 7) as i64;
-                        }
-                    }
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist0, i as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist1, (i + 1) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist2, (i + 2) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist3, (i + 3) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist4, (i + 4) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist5, (i + 5) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist6, (i + 6) as i64);
+                    self.insert_top_k(&mut top_distances, &mut top_labels, k, dist7, (i + 7) as i64);
 
                     vec_ptr = unsafe { vec_ptr.add(8 * dim) };
                     i += 8;
                 }
+            } else {
+                    // 对其他维度，每次处理8个向量
+                    while i + 7 < self.size {
+                        // 软件预取，减少内存访问延迟
+                        #[cfg(target_arch = "x86_64")]
+                        unsafe {
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(8 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(16 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                        }
 
-                // 处理剩余的向量
+                        let dist0 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr, dim) });
+                        let dist1 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(dim), dim) });
+                        let dist2 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(2 * dim), dim) });
+                        let dist3 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(3 * dim), dim) });
+                        let dist4 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(4 * dim), dim) });
+                        let dist5 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(5 * dim), dim) });
+                        let dist6 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(6 * dim), dim) });
+                        let dist7 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(7 * dim), dim) });
+
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist0, i as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist1, (i + 1) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist2, (i + 2) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist3, (i + 3) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist4, (i + 4) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist5, (i + 5) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist6, (i + 6) as i64);
+                        self.insert_top_k(&mut top_distances, &mut top_labels, k, dist7, (i + 7) as i64);
+
+                        vec_ptr = unsafe { vec_ptr.add(8 * dim) };
+                        i += 8;
+                    }
+                }
+
+            for j in i..self.size {
+                let vec = unsafe { std::slice::from_raw_parts(vec_ptr, dim) };
+                let dist = self.compute_l2_distance(query, vec);
+
+                self.insert_top_k(&mut top_distances, &mut top_labels, k, dist, j as i64);
+                
+                vec_ptr = unsafe { vec_ptr.add(dim) };
+            }
+        }
+
+        Ok((top_labels, top_distances))
+    }
+
+    fn search_parallel(&self, query: &[f32], k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
+        if self.size <= 10000 {
+            return self.search_single(query, k);
+        }
+
+        let num_threads = self.calculate_optimal_search_threads();
+
+        let min_vectors_per_thread = 1000;
+        let max_threads = std::cmp::min(num_threads, self.size / min_vectors_per_thread + 1);
+        let max_threads = std::cmp::max(1, max_threads);
+
+        let vectors_per_thread = self.size / max_threads;
+        let remainder = self.size % max_threads;
+
+        let mut thread_results = vec![(vec![f32::MAX; k], vec![0i64; k]); max_threads];
+
+        thread_results.par_iter_mut().enumerate().for_each(|(t, (thread_distances, thread_labels))| {
+            let start = t * vectors_per_thread + std::cmp::min(t, remainder);
+            let end = start + vectors_per_thread + if t < remainder { 1 } else { 0 };
+
+            for i in 0..k {
+                thread_distances[i] = f32::MAX;
+                thread_labels[i] = 0;
+            }
+
+            #[cfg(target_arch = "x86_64")]
+            unsafe {
+                // 预取查询向量到缓存，参考C++实现
+                std::arch::x86_64::_mm_prefetch(
+                    query.as_ptr() as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0
+                );
+                if query.len() > 64 {
+                    std::arch::x86_64::_mm_prefetch(
+                        query.as_ptr().add(64) as *const i8,
+                        std::arch::x86_64::_MM_HINT_T0
+                    );
+                }
+                if query.len() > 128 {
+                    std::arch::x86_64::_mm_prefetch(
+                        query.as_ptr().add(128) as *const i8,
+                        std::arch::x86_64::_MM_HINT_T0
+                    );
+                }
+                if query.len() > 192 {
+                    std::arch::x86_64::_mm_prefetch(
+                        query.as_ptr().add(192) as *const i8,
+                        std::arch::x86_64::_MM_HINT_T0
+                    );
+                }
+            }
+
+            if self.transposed {
+                let batch_size = 4096;
+                let mut batch_dists = [0.0f32; 16384];
+
+                let mut i = start;
+                while i < end {
+                    let current_batch_size = std::cmp::min(batch_size, end - i);
+
+                    for j in (0..current_batch_size).step_by(8) {
+                        let sub_batch_size = std::cmp::min(8, current_batch_size - j);
+                        self.compute_batch_distances_transposed(query, i + j, sub_batch_size, &mut batch_dists[j..j+sub_batch_size]);
+                    }
+
+                    for j in 0..current_batch_size {
+                        let dist = batch_dists[j];
+                        self.insert_top_k(thread_distances, thread_labels, k, dist, (i + j) as i64);
+                    }
+
+                    i += current_batch_size;
+                }
+            } else {
+                let dim = self.dimension;
+                let mut vec_ptr = unsafe { self.vectors.as_ptr().add(start * dim) };
+                let mut i = start;
+
+                if dim == 128 || dim == 256 {
+                    // 对128D和256D专门优化，每次处理8个向量，参考C++实现
+                    while i + 7 < end {
+                        // 软件预取，减少内存访问延迟
+                        #[cfg(target_arch = "x86_64")]
+                        unsafe {
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(8 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(16 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                        }
+
+                        let dist0 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr, dim) });
+                        let dist1 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(dim), dim) });
+                        let dist2 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(2 * dim), dim) });
+                        let dist3 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(3 * dim), dim) });
+                        let dist4 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(4 * dim), dim) });
+                        let dist5 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(5 * dim), dim) });
+                        let dist6 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(6 * dim), dim) });
+                        let dist7 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(7 * dim), dim) });
+
+                        self.insert_top_k(thread_distances, thread_labels, k, dist0, i as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist1, (i + 1) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist2, (i + 2) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist3, (i + 3) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist4, (i + 4) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist5, (i + 5) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist6, (i + 6) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist7, (i + 7) as i64);
+
+                        vec_ptr = unsafe { vec_ptr.add(8 * dim) };
+                        i += 8;
+                    }
+                } else {
+                    // 对其他维度，每次处理8个向量
+                    while i + 7 < end {
+                        // 软件预取，减少内存访问延迟
+                        #[cfg(target_arch = "x86_64")]
+                        unsafe {
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(8 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                            std::arch::x86_64::_mm_prefetch(
+                                vec_ptr.add(16 * dim) as *const i8,
+                                std::arch::x86_64::_MM_HINT_T0
+                            );
+                        }
+
+                        let dist0 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr, dim) });
+                        let dist1 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(dim), dim) });
+                        let dist2 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(2 * dim), dim) });
+                        let dist3 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(3 * dim), dim) });
+                        let dist4 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(4 * dim), dim) });
+                        let dist5 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(5 * dim), dim) });
+                        let dist6 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(6 * dim), dim) });
+                        let dist7 = self.compute_l2_distance(query, unsafe { std::slice::from_raw_parts(vec_ptr.add(7 * dim), dim) });
+
+                        self.insert_top_k(thread_distances, thread_labels, k, dist0, i as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist1, (i + 1) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist2, (i + 2) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist3, (i + 3) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist4, (i + 4) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist5, (i + 5) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist6, (i + 6) as i64);
+                        self.insert_top_k(thread_distances, thread_labels, k, dist7, (i + 7) as i64);
+
+                        vec_ptr = unsafe { vec_ptr.add(8 * dim) };
+                        i += 8;
+                    }
+                }
+
                 for j in i..end {
                     let vec = unsafe { std::slice::from_raw_parts(vec_ptr, dim) };
                     let dist = self.compute_l2_distance(query, vec);
 
-                    if dist < thread_distances[k-1] {
-                        // 使用二分查找来找到插入位置，时间复杂度为 O(log k)
-                        let mut left = 0;
-                        let mut right = k;
-                        while left < right {
-                            let mid = (left + right) / 2;
-                            if dist < thread_distances[mid] {
-                                right = mid;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-
-                        if left < k {
-                            // 批量移动数据
-                            thread_distances.copy_within(left..k-1, left+1);
-                            thread_labels.copy_within(left..k-1, left+1);
-                            thread_distances[left] = dist;
-                            thread_labels[left] = j as i64;
-                        }
-                    }
+                    self.insert_top_k(thread_distances, thread_labels, k, dist, j as i64);
                     vec_ptr = unsafe { vec_ptr.add(dim) };
                 }
             }
         });
 
-        // 合并所有线程的结果
         let mut final_distances = vec![f32::MAX; k];
         let mut final_labels = vec![0i64; k];
 
@@ -1153,28 +1384,7 @@ impl FlatIndex {
             for i in 0..k {
                 let dist = thread_distances[i];
                 let label = thread_labels[i];
-
-                if dist < final_distances[k-1] {
-                    // 使用二分查找来找到插入位置，时间复杂度为 O(log k)
-                    let mut left = 0;
-                    let mut right = k;
-                    while left < right {
-                        let mid = (left + right) / 2;
-                        if dist < final_distances[mid] {
-                            right = mid;
-                        } else {
-                            left = mid + 1;
-                        }
-                    }
-
-                    if left < k {
-                        // 批量移动数据
-                        final_distances.copy_within(left..k-1, left+1);
-                        final_labels.copy_within(left..k-1, left+1);
-                        final_distances[left] = dist;
-                        final_labels[left] = label;
-                    }
-                }
+                self.insert_top_k(&mut final_distances, &mut final_labels, k, dist, label);
             }
         }
 

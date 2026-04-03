@@ -155,6 +155,9 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         start_time = time.time()
         distances, labels = index_cpp.search(queries, k)
         search_time = time.time() - start_time
+        # 确保搜索时间为正数
+        if search_time <= 0:
+            search_time = 1e-6
         print(f"Search time: {search_time:.4f}s")
         
         # 确保内存值不为负或零（如果测量有问题，使用理论值）
@@ -198,11 +201,12 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         
         # Test search
         start_time = time.time()
-        for i in range(num_queries):
-            # 重塑查询向量为2D数组 (1, dimension)
-            query_2d = queries[i].reshape(1, -1)
-            labels, distances = index_rust.search_buf(query_2d, k)
+        # 使用批量搜索API，一次处理所有查询
+        labels_batch, distances_batch = index_rust.search_batch_buf(queries, k)
         search_time = time.time() - start_time
+        # 确保搜索时间为正数
+        if search_time <= 0:
+            search_time = 1e-6
         print(f"Search time: {search_time:.4f}s")
         
         # 确保内存值不为负或零（如果测量有问题，使用理论值）
@@ -248,6 +252,9 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         start_time = time.time()
         distances, labels = index_faiss.search(queries, k)
         search_time = time.time() - start_time
+        # 确保搜索时间为正数
+        if search_time <= 0:
+            search_time = 1e-6
         print(f"Search time: {search_time:.4f}s")
         
         # 确保内存值不为负或零（如果测量有问题，使用理论值）
