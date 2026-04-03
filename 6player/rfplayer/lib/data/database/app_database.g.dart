@@ -1028,7 +1028,8 @@ class $PlayQueueTableTable extends PlayQueueTable
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
   );
   static const VerificationMeta _displayNameMeta = const VerificationMeta(
     'displayName',
@@ -1039,7 +1040,8 @@ class $PlayQueueTableTable extends PlayQueueTable
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
   );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
@@ -1050,7 +1052,8 @@ class $PlayQueueTableTable extends PlayQueueTable
     aliasedName,
     false,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _addedAtMeta = const VerificationMeta(
     'addedAt',
@@ -1061,7 +1064,8 @@ class $PlayQueueTableTable extends PlayQueueTable
     aliasedName,
     false,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _isCurrentPlayingMeta = const VerificationMeta(
     'isCurrentPlaying',
@@ -1108,10 +1112,11 @@ class $PlayQueueTableTable extends PlayQueueTable
     aliasedName,
     false,
     type: DriftSqlType.bool,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'CHECK ("is_invalid" IN (0, 1))',
     ),
+    defaultValue: const Constant(false),
   );
   @override
   List<GeneratedColumn> get $columns => [
@@ -1147,8 +1152,6 @@ class $PlayQueueTableTable extends PlayQueueTable
         _pathMeta,
         path.isAcceptableOrUnknown(data['path']!, _pathMeta),
       );
-    } else if (isInserting) {
-      context.missing(_pathMeta);
     }
     if (data.containsKey('display_name')) {
       context.handle(
@@ -1158,24 +1161,18 @@ class $PlayQueueTableTable extends PlayQueueTable
           _displayNameMeta,
         ),
       );
-    } else if (isInserting) {
-      context.missing(_displayNameMeta);
     }
     if (data.containsKey('sort_order')) {
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
-    } else if (isInserting) {
-      context.missing(_sortOrderMeta);
     }
     if (data.containsKey('added_at')) {
       context.handle(
         _addedAtMeta,
         addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
       );
-    } else if (isInserting) {
-      context.missing(_addedAtMeta);
     }
     if (data.containsKey('is_current_playing')) {
       context.handle(
@@ -1206,8 +1203,6 @@ class $PlayQueueTableTable extends PlayQueueTable
         _isInvalidMeta,
         isInvalid.isAcceptableOrUnknown(data['is_invalid']!, _isInvalidMeta),
       );
-    } else if (isInserting) {
-      context.missing(_isInvalidMeta);
     }
     return context;
   }
@@ -1456,21 +1451,16 @@ class PlayQueueTableCompanion extends UpdateCompanion<PlayQueueTableData> {
   });
   PlayQueueTableCompanion.insert({
     required String id,
-    required String path,
-    required String displayName,
-    required int sortOrder,
-    required int addedAt,
+    this.path = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.addedAt = const Value.absent(),
     this.isCurrentPlaying = const Value.absent(),
     this.hasPlayed = const Value.absent(),
     this.playProgress = const Value.absent(),
-    required bool isInvalid,
+    this.isInvalid = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       path = Value(path),
-       displayName = Value(displayName),
-       sortOrder = Value(sortOrder),
-       addedAt = Value(addedAt),
-       isInvalid = Value(isInvalid);
+  }) : id = Value(id);
   static Insertable<PlayQueueTableData> custom({
     Expression<String>? id,
     Expression<String>? path,
@@ -1577,6 +1567,787 @@ class PlayQueueTableCompanion extends UpdateCompanion<PlayQueueTableData> {
   }
 }
 
+class $VideoBookmarksTable extends VideoBookmarks
+    with TableInfo<$VideoBookmarksTable, VideoBookmarkData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VideoBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _videoPathMeta = const VerificationMeta(
+    'videoPath',
+  );
+  @override
+  late final GeneratedColumn<String> videoPath = GeneratedColumn<String>(
+    'video_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _videoNameMeta = const VerificationMeta(
+    'videoName',
+  );
+  @override
+  late final GeneratedColumn<String> videoName = GeneratedColumn<String>(
+    'video_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMsMeta = const VerificationMeta(
+    'positionMs',
+  );
+  @override
+  late final GeneratedColumn<int> positionMs = GeneratedColumn<int>(
+    'position_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('video'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    videoPath,
+    videoName,
+    positionMs,
+    note,
+    createdAtMs,
+    type,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'video_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VideoBookmarkData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('video_path')) {
+      context.handle(
+        _videoPathMeta,
+        videoPath.isAcceptableOrUnknown(data['video_path']!, _videoPathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_videoPathMeta);
+    }
+    if (data.containsKey('video_name')) {
+      context.handle(
+        _videoNameMeta,
+        videoName.isAcceptableOrUnknown(data['video_name']!, _videoNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_videoNameMeta);
+    }
+    if (data.containsKey('position_ms')) {
+      context.handle(
+        _positionMsMeta,
+        positionMs.isAcceptableOrUnknown(data['position_ms']!, _positionMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMsMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VideoBookmarkData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VideoBookmarkData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      videoPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}video_path'],
+      )!,
+      videoName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}video_name'],
+      )!,
+      positionMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_ms'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+    );
+  }
+
+  @override
+  $VideoBookmarksTable createAlias(String alias) {
+    return $VideoBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class VideoBookmarkData extends DataClass
+    implements Insertable<VideoBookmarkData> {
+  final String id;
+  final String videoPath;
+  final String videoName;
+  final int positionMs;
+  final String? note;
+  final int createdAtMs;
+  final String type;
+  const VideoBookmarkData({
+    required this.id,
+    required this.videoPath,
+    required this.videoName,
+    required this.positionMs,
+    this.note,
+    required this.createdAtMs,
+    required this.type,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['video_path'] = Variable<String>(videoPath);
+    map['video_name'] = Variable<String>(videoName);
+    map['position_ms'] = Variable<int>(positionMs);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    map['type'] = Variable<String>(type);
+    return map;
+  }
+
+  VideoBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return VideoBookmarksCompanion(
+      id: Value(id),
+      videoPath: Value(videoPath),
+      videoName: Value(videoName),
+      positionMs: Value(positionMs),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      createdAtMs: Value(createdAtMs),
+      type: Value(type),
+    );
+  }
+
+  factory VideoBookmarkData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VideoBookmarkData(
+      id: serializer.fromJson<String>(json['id']),
+      videoPath: serializer.fromJson<String>(json['videoPath']),
+      videoName: serializer.fromJson<String>(json['videoName']),
+      positionMs: serializer.fromJson<int>(json['positionMs']),
+      note: serializer.fromJson<String?>(json['note']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      type: serializer.fromJson<String>(json['type']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'videoPath': serializer.toJson<String>(videoPath),
+      'videoName': serializer.toJson<String>(videoName),
+      'positionMs': serializer.toJson<int>(positionMs),
+      'note': serializer.toJson<String?>(note),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'type': serializer.toJson<String>(type),
+    };
+  }
+
+  VideoBookmarkData copyWith({
+    String? id,
+    String? videoPath,
+    String? videoName,
+    int? positionMs,
+    Value<String?> note = const Value.absent(),
+    int? createdAtMs,
+    String? type,
+  }) => VideoBookmarkData(
+    id: id ?? this.id,
+    videoPath: videoPath ?? this.videoPath,
+    videoName: videoName ?? this.videoName,
+    positionMs: positionMs ?? this.positionMs,
+    note: note.present ? note.value : this.note,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    type: type ?? this.type,
+  );
+  VideoBookmarkData copyWithCompanion(VideoBookmarksCompanion data) {
+    return VideoBookmarkData(
+      id: data.id.present ? data.id.value : this.id,
+      videoPath: data.videoPath.present ? data.videoPath.value : this.videoPath,
+      videoName: data.videoName.present ? data.videoName.value : this.videoName,
+      positionMs: data.positionMs.present
+          ? data.positionMs.value
+          : this.positionMs,
+      note: data.note.present ? data.note.value : this.note,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+      type: data.type.present ? data.type.value : this.type,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VideoBookmarkData(')
+          ..write('id: $id, ')
+          ..write('videoPath: $videoPath, ')
+          ..write('videoName: $videoName, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('note: $note, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('type: $type')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    videoPath,
+    videoName,
+    positionMs,
+    note,
+    createdAtMs,
+    type,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VideoBookmarkData &&
+          other.id == this.id &&
+          other.videoPath == this.videoPath &&
+          other.videoName == this.videoName &&
+          other.positionMs == this.positionMs &&
+          other.note == this.note &&
+          other.createdAtMs == this.createdAtMs &&
+          other.type == this.type);
+}
+
+class VideoBookmarksCompanion extends UpdateCompanion<VideoBookmarkData> {
+  final Value<String> id;
+  final Value<String> videoPath;
+  final Value<String> videoName;
+  final Value<int> positionMs;
+  final Value<String?> note;
+  final Value<int> createdAtMs;
+  final Value<String> type;
+  final Value<int> rowid;
+  const VideoBookmarksCompanion({
+    this.id = const Value.absent(),
+    this.videoPath = const Value.absent(),
+    this.videoName = const Value.absent(),
+    this.positionMs = const Value.absent(),
+    this.note = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.type = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VideoBookmarksCompanion.insert({
+    required String id,
+    required String videoPath,
+    required String videoName,
+    required int positionMs,
+    this.note = const Value.absent(),
+    required int createdAtMs,
+    this.type = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       videoPath = Value(videoPath),
+       videoName = Value(videoName),
+       positionMs = Value(positionMs),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<VideoBookmarkData> custom({
+    Expression<String>? id,
+    Expression<String>? videoPath,
+    Expression<String>? videoName,
+    Expression<int>? positionMs,
+    Expression<String>? note,
+    Expression<int>? createdAtMs,
+    Expression<String>? type,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (videoPath != null) 'video_path': videoPath,
+      if (videoName != null) 'video_name': videoName,
+      if (positionMs != null) 'position_ms': positionMs,
+      if (note != null) 'note': note,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (type != null) 'type': type,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VideoBookmarksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? videoPath,
+    Value<String>? videoName,
+    Value<int>? positionMs,
+    Value<String?>? note,
+    Value<int>? createdAtMs,
+    Value<String>? type,
+    Value<int>? rowid,
+  }) {
+    return VideoBookmarksCompanion(
+      id: id ?? this.id,
+      videoPath: videoPath ?? this.videoPath,
+      videoName: videoName ?? this.videoName,
+      positionMs: positionMs ?? this.positionMs,
+      note: note ?? this.note,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      type: type ?? this.type,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (videoPath.present) {
+      map['video_path'] = Variable<String>(videoPath.value);
+    }
+    if (videoName.present) {
+      map['video_name'] = Variable<String>(videoName.value);
+    }
+    if (positionMs.present) {
+      map['position_ms'] = Variable<int>(positionMs.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VideoBookmarksCompanion(')
+          ..write('id: $id, ')
+          ..write('videoPath: $videoPath, ')
+          ..write('videoName: $videoName, ')
+          ..write('positionMs: $positionMs, ')
+          ..write('note: $note, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('type: $type, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ImageBookmarksTable extends ImageBookmarks
+    with TableInfo<$ImageBookmarksTable, ImageBookmarkData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ImageBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _imagePathMeta = const VerificationMeta(
+    'imagePath',
+  );
+  @override
+  late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
+    'image_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _imageNameMeta = const VerificationMeta(
+    'imageName',
+  );
+  @override
+  late final GeneratedColumn<String> imageName = GeneratedColumn<String>(
+    'image_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMsMeta = const VerificationMeta(
+    'createdAtMs',
+  );
+  @override
+  late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
+    'created_at_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, imagePath, imageName, createdAtMs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'image_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ImageBookmarkData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('image_path')) {
+      context.handle(
+        _imagePathMeta,
+        imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_imagePathMeta);
+    }
+    if (data.containsKey('image_name')) {
+      context.handle(
+        _imageNameMeta,
+        imageName.isAcceptableOrUnknown(data['image_name']!, _imageNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_imageNameMeta);
+    }
+    if (data.containsKey('created_at_ms')) {
+      context.handle(
+        _createdAtMsMeta,
+        createdAtMs.isAcceptableOrUnknown(
+          data['created_at_ms']!,
+          _createdAtMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ImageBookmarkData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ImageBookmarkData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      imagePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_path'],
+      )!,
+      imageName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_name'],
+      )!,
+      createdAtMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at_ms'],
+      )!,
+    );
+  }
+
+  @override
+  $ImageBookmarksTable createAlias(String alias) {
+    return $ImageBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class ImageBookmarkData extends DataClass
+    implements Insertable<ImageBookmarkData> {
+  final String id;
+  final String imagePath;
+  final String imageName;
+  final int createdAtMs;
+  const ImageBookmarkData({
+    required this.id,
+    required this.imagePath,
+    required this.imageName,
+    required this.createdAtMs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['image_path'] = Variable<String>(imagePath);
+    map['image_name'] = Variable<String>(imageName);
+    map['created_at_ms'] = Variable<int>(createdAtMs);
+    return map;
+  }
+
+  ImageBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return ImageBookmarksCompanion(
+      id: Value(id),
+      imagePath: Value(imagePath),
+      imageName: Value(imageName),
+      createdAtMs: Value(createdAtMs),
+    );
+  }
+
+  factory ImageBookmarkData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ImageBookmarkData(
+      id: serializer.fromJson<String>(json['id']),
+      imagePath: serializer.fromJson<String>(json['imagePath']),
+      imageName: serializer.fromJson<String>(json['imageName']),
+      createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'imagePath': serializer.toJson<String>(imagePath),
+      'imageName': serializer.toJson<String>(imageName),
+      'createdAtMs': serializer.toJson<int>(createdAtMs),
+    };
+  }
+
+  ImageBookmarkData copyWith({
+    String? id,
+    String? imagePath,
+    String? imageName,
+    int? createdAtMs,
+  }) => ImageBookmarkData(
+    id: id ?? this.id,
+    imagePath: imagePath ?? this.imagePath,
+    imageName: imageName ?? this.imageName,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+  );
+  ImageBookmarkData copyWithCompanion(ImageBookmarksCompanion data) {
+    return ImageBookmarkData(
+      id: data.id.present ? data.id.value : this.id,
+      imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      imageName: data.imageName.present ? data.imageName.value : this.imageName,
+      createdAtMs: data.createdAtMs.present
+          ? data.createdAtMs.value
+          : this.createdAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImageBookmarkData(')
+          ..write('id: $id, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('imageName: $imageName, ')
+          ..write('createdAtMs: $createdAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, imagePath, imageName, createdAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ImageBookmarkData &&
+          other.id == this.id &&
+          other.imagePath == this.imagePath &&
+          other.imageName == this.imageName &&
+          other.createdAtMs == this.createdAtMs);
+}
+
+class ImageBookmarksCompanion extends UpdateCompanion<ImageBookmarkData> {
+  final Value<String> id;
+  final Value<String> imagePath;
+  final Value<String> imageName;
+  final Value<int> createdAtMs;
+  final Value<int> rowid;
+  const ImageBookmarksCompanion({
+    this.id = const Value.absent(),
+    this.imagePath = const Value.absent(),
+    this.imageName = const Value.absent(),
+    this.createdAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ImageBookmarksCompanion.insert({
+    required String id,
+    required String imagePath,
+    required String imageName,
+    required int createdAtMs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       imagePath = Value(imagePath),
+       imageName = Value(imageName),
+       createdAtMs = Value(createdAtMs);
+  static Insertable<ImageBookmarkData> custom({
+    Expression<String>? id,
+    Expression<String>? imagePath,
+    Expression<String>? imageName,
+    Expression<int>? createdAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (imagePath != null) 'image_path': imagePath,
+      if (imageName != null) 'image_name': imageName,
+      if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ImageBookmarksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? imagePath,
+    Value<String>? imageName,
+    Value<int>? createdAtMs,
+    Value<int>? rowid,
+  }) {
+    return ImageBookmarksCompanion(
+      id: id ?? this.id,
+      imagePath: imagePath ?? this.imagePath,
+      imageName: imageName ?? this.imageName,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (imagePath.present) {
+      map['image_path'] = Variable<String>(imagePath.value);
+    }
+    if (imageName.present) {
+      map['image_name'] = Variable<String>(imageName.value);
+    }
+    if (createdAtMs.present) {
+      map['created_at_ms'] = Variable<int>(createdAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ImageBookmarksCompanion(')
+          ..write('id: $id, ')
+          ..write('imagePath: $imagePath, ')
+          ..write('imageName: $imageName, ')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1585,9 +2356,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $BookmarksTableTable bookmarksTable = $BookmarksTableTable(this);
   late final $PlayQueueTableTable playQueueTable = $PlayQueueTableTable(this);
+  late final $VideoBookmarksTable videoBookmarks = $VideoBookmarksTable(this);
+  late final $ImageBookmarksTable imageBookmarks = $ImageBookmarksTable(this);
   late final HistoryDao historyDao = HistoryDao(this as AppDatabase);
   late final BookmarkDao bookmarkDao = BookmarkDao(this as AppDatabase);
   late final PlayQueueDao playQueueDao = PlayQueueDao(this as AppDatabase);
+  late final VideoBookmarkDao videoBookmarkDao = VideoBookmarkDao(
+    this as AppDatabase,
+  );
+  late final ImageBookmarkDao imageBookmarkDao = ImageBookmarkDao(
+    this as AppDatabase,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1596,6 +2375,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     playHistoryTable,
     bookmarksTable,
     playQueueTable,
+    videoBookmarks,
+    imageBookmarks,
   ];
 }
 
@@ -2125,14 +2906,14 @@ typedef $$BookmarksTableTableProcessedTableManager =
 typedef $$PlayQueueTableTableCreateCompanionBuilder =
     PlayQueueTableCompanion Function({
       required String id,
-      required String path,
-      required String displayName,
-      required int sortOrder,
-      required int addedAt,
+      Value<String> path,
+      Value<String> displayName,
+      Value<int> sortOrder,
+      Value<int> addedAt,
       Value<int> isCurrentPlaying,
       Value<int> hasPlayed,
       Value<double> playProgress,
-      required bool isInvalid,
+      Value<bool> isInvalid,
       Value<int> rowid,
     });
 typedef $$PlayQueueTableTableUpdateCompanionBuilder =
@@ -2364,14 +3145,14 @@ class $$PlayQueueTableTableTableManager
           createCompanionCallback:
               ({
                 required String id,
-                required String path,
-                required String displayName,
-                required int sortOrder,
-                required int addedAt,
+                Value<String> path = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> addedAt = const Value.absent(),
                 Value<int> isCurrentPlaying = const Value.absent(),
                 Value<int> hasPlayed = const Value.absent(),
                 Value<double> playProgress = const Value.absent(),
-                required bool isInvalid,
+                Value<bool> isInvalid = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlayQueueTableCompanion.insert(
                 id: id,
@@ -2410,6 +3191,443 @@ typedef $$PlayQueueTableTableProcessedTableManager =
       PlayQueueTableData,
       PrefetchHooks Function()
     >;
+typedef $$VideoBookmarksTableCreateCompanionBuilder =
+    VideoBookmarksCompanion Function({
+      required String id,
+      required String videoPath,
+      required String videoName,
+      required int positionMs,
+      Value<String?> note,
+      required int createdAtMs,
+      Value<String> type,
+      Value<int> rowid,
+    });
+typedef $$VideoBookmarksTableUpdateCompanionBuilder =
+    VideoBookmarksCompanion Function({
+      Value<String> id,
+      Value<String> videoPath,
+      Value<String> videoName,
+      Value<int> positionMs,
+      Value<String?> note,
+      Value<int> createdAtMs,
+      Value<String> type,
+      Value<int> rowid,
+    });
+
+class $$VideoBookmarksTableFilterComposer
+    extends Composer<_$AppDatabase, $VideoBookmarksTable> {
+  $$VideoBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get videoPath => $composableBuilder(
+    column: $table.videoPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get videoName => $composableBuilder(
+    column: $table.videoName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VideoBookmarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $VideoBookmarksTable> {
+  $$VideoBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get videoPath => $composableBuilder(
+    column: $table.videoPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get videoName => $composableBuilder(
+    column: $table.videoName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VideoBookmarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VideoBookmarksTable> {
+  $$VideoBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get videoPath =>
+      $composableBuilder(column: $table.videoPath, builder: (column) => column);
+
+  GeneratedColumn<String> get videoName =>
+      $composableBuilder(column: $table.videoName, builder: (column) => column);
+
+  GeneratedColumn<int> get positionMs => $composableBuilder(
+    column: $table.positionMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+}
+
+class $$VideoBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VideoBookmarksTable,
+          VideoBookmarkData,
+          $$VideoBookmarksTableFilterComposer,
+          $$VideoBookmarksTableOrderingComposer,
+          $$VideoBookmarksTableAnnotationComposer,
+          $$VideoBookmarksTableCreateCompanionBuilder,
+          $$VideoBookmarksTableUpdateCompanionBuilder,
+          (
+            VideoBookmarkData,
+            BaseReferences<
+              _$AppDatabase,
+              $VideoBookmarksTable,
+              VideoBookmarkData
+            >,
+          ),
+          VideoBookmarkData,
+          PrefetchHooks Function()
+        > {
+  $$VideoBookmarksTableTableManager(
+    _$AppDatabase db,
+    $VideoBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VideoBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VideoBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VideoBookmarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> videoPath = const Value.absent(),
+                Value<String> videoName = const Value.absent(),
+                Value<int> positionMs = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VideoBookmarksCompanion(
+                id: id,
+                videoPath: videoPath,
+                videoName: videoName,
+                positionMs: positionMs,
+                note: note,
+                createdAtMs: createdAtMs,
+                type: type,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String videoPath,
+                required String videoName,
+                required int positionMs,
+                Value<String?> note = const Value.absent(),
+                required int createdAtMs,
+                Value<String> type = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => VideoBookmarksCompanion.insert(
+                id: id,
+                videoPath: videoPath,
+                videoName: videoName,
+                positionMs: positionMs,
+                note: note,
+                createdAtMs: createdAtMs,
+                type: type,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VideoBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VideoBookmarksTable,
+      VideoBookmarkData,
+      $$VideoBookmarksTableFilterComposer,
+      $$VideoBookmarksTableOrderingComposer,
+      $$VideoBookmarksTableAnnotationComposer,
+      $$VideoBookmarksTableCreateCompanionBuilder,
+      $$VideoBookmarksTableUpdateCompanionBuilder,
+      (
+        VideoBookmarkData,
+        BaseReferences<_$AppDatabase, $VideoBookmarksTable, VideoBookmarkData>,
+      ),
+      VideoBookmarkData,
+      PrefetchHooks Function()
+    >;
+typedef $$ImageBookmarksTableCreateCompanionBuilder =
+    ImageBookmarksCompanion Function({
+      required String id,
+      required String imagePath,
+      required String imageName,
+      required int createdAtMs,
+      Value<int> rowid,
+    });
+typedef $$ImageBookmarksTableUpdateCompanionBuilder =
+    ImageBookmarksCompanion Function({
+      Value<String> id,
+      Value<String> imagePath,
+      Value<String> imageName,
+      Value<int> createdAtMs,
+      Value<int> rowid,
+    });
+
+class $$ImageBookmarksTableFilterComposer
+    extends Composer<_$AppDatabase, $ImageBookmarksTable> {
+  $$ImageBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageName => $composableBuilder(
+    column: $table.imageName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ImageBookmarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $ImageBookmarksTable> {
+  $$ImageBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imagePath => $composableBuilder(
+    column: $table.imagePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get imageName => $composableBuilder(
+    column: $table.imageName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ImageBookmarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ImageBookmarksTable> {
+  $$ImageBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePath =>
+      $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<String> get imageName =>
+      $composableBuilder(column: $table.imageName, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAtMs => $composableBuilder(
+    column: $table.createdAtMs,
+    builder: (column) => column,
+  );
+}
+
+class $$ImageBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ImageBookmarksTable,
+          ImageBookmarkData,
+          $$ImageBookmarksTableFilterComposer,
+          $$ImageBookmarksTableOrderingComposer,
+          $$ImageBookmarksTableAnnotationComposer,
+          $$ImageBookmarksTableCreateCompanionBuilder,
+          $$ImageBookmarksTableUpdateCompanionBuilder,
+          (
+            ImageBookmarkData,
+            BaseReferences<
+              _$AppDatabase,
+              $ImageBookmarksTable,
+              ImageBookmarkData
+            >,
+          ),
+          ImageBookmarkData,
+          PrefetchHooks Function()
+        > {
+  $$ImageBookmarksTableTableManager(
+    _$AppDatabase db,
+    $ImageBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ImageBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ImageBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ImageBookmarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> imagePath = const Value.absent(),
+                Value<String> imageName = const Value.absent(),
+                Value<int> createdAtMs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ImageBookmarksCompanion(
+                id: id,
+                imagePath: imagePath,
+                imageName: imageName,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String imagePath,
+                required String imageName,
+                required int createdAtMs,
+                Value<int> rowid = const Value.absent(),
+              }) => ImageBookmarksCompanion.insert(
+                id: id,
+                imagePath: imagePath,
+                imageName: imageName,
+                createdAtMs: createdAtMs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ImageBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ImageBookmarksTable,
+      ImageBookmarkData,
+      $$ImageBookmarksTableFilterComposer,
+      $$ImageBookmarksTableOrderingComposer,
+      $$ImageBookmarksTableAnnotationComposer,
+      $$ImageBookmarksTableCreateCompanionBuilder,
+      $$ImageBookmarksTableUpdateCompanionBuilder,
+      (
+        ImageBookmarkData,
+        BaseReferences<_$AppDatabase, $ImageBookmarksTable, ImageBookmarkData>,
+      ),
+      ImageBookmarkData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2420,4 +3638,8 @@ class $AppDatabaseManager {
       $$BookmarksTableTableTableManager(_db, _db.bookmarksTable);
   $$PlayQueueTableTableTableManager get playQueueTable =>
       $$PlayQueueTableTableTableManager(_db, _db.playQueueTable);
+  $$VideoBookmarksTableTableManager get videoBookmarks =>
+      $$VideoBookmarksTableTableManager(_db, _db.videoBookmarks);
+  $$ImageBookmarksTableTableManager get imageBookmarks =>
+      $$ImageBookmarksTableTableManager(_db, _db.imageBookmarks);
 }

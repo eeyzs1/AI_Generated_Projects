@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rfplayer/presentation/providers/play_queue_provider.dart';
 import 'package:rfplayer/data/models/play_queue.dart';
+import 'package:rfplayer/core/localization/app_localizations.dart';
 import 'play_list_item.dart';
 
 class WindowsPlayListPanel extends ConsumerStatefulWidget {
-  const WindowsPlayListPanel({super.key});
+  final VoidCallback? onNavigateBack;
+
+  const WindowsPlayListPanel({super.key, this.onNavigateBack});
 
   @override
   ConsumerState<WindowsPlayListPanel> createState() => _WindowsPlayListPanelState();
@@ -14,6 +17,7 @@ class WindowsPlayListPanel extends ConsumerStatefulWidget {
 class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final queue = ref.watch(playQueueProvider);
     final playQueueNotifier = ref.read(playQueueProvider.notifier);
 
@@ -35,9 +39,9 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  '播放列表',
-                  style: TextStyle(
+                Text(
+                  loc.playList,
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -56,7 +60,7 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
           Expanded(
             child: queue.isEmpty
                 ? Center(
-                    child: Text('播放列表为空'),
+                    child: Text(loc.playListEmpty),
                   )
                 : ReorderableListView.builder(
                     itemCount: queue.length,
@@ -73,7 +77,10 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
                           await playQueueNotifier.playItem(item.id);
                         },
                         onDelete: () async {
-                          await playQueueNotifier.removeFromQueue(item.id);
+                          final shouldNavigateBack = await playQueueNotifier.removeFromQueueWithHandling(item.id);
+                          if (shouldNavigateBack && widget.onNavigateBack != null) {
+                            widget.onNavigateBack!();
+                          }
                         },
                       );
                     },
@@ -99,19 +106,19 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
                   onPressed: () async {
                     await playQueueNotifier.playPrevious();
                   },
-                  child: const Text('上一个'),
+                  child: Text(loc.previous),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     await playQueueNotifier.playNext();
                   },
-                  child: const Text('下一个'),
+                  child: Text(loc.next),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     await playQueueNotifier.clearQueue();
                   },
-                  child: const Text('清空'),
+                  child: Text(loc.clear),
                 ),
               ],
             ),

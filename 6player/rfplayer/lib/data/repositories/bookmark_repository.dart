@@ -1,30 +1,30 @@
 import 'dart:io';
-import '../database/app_database.dart';
+import '../database/daos/bookmark_dao.dart';
 import '../models/bookmark.dart';
 
 class BookmarkRepository {
-  final AppDatabase _db;
+  final BookmarkDao _dao;
 
-  BookmarkRepository(this._db);
+  BookmarkRepository(this._dao);
 
   Future<List<Bookmark>> getAll() {
-    return _db.bookmarkDao.getAll();
+    return _dao.getAll();
   }
 
   Future<void> insert(Bookmark bookmark) {
-    return _db.bookmarkDao.insert(bookmark);
+    return _dao.insert(bookmark);
   }
 
   Future<void> deleteById(String id) {
-    return _db.bookmarkDao.deleteById(id);
+    return _dao.deleteById(id);
   }
 
   Future<void> reorder(List<String> orderedIds) {
-    return _db.bookmarkDao.reorder(orderedIds);
+    return _dao.reorder(orderedIds);
   }
 
   Stream<List<Bookmark>> watchAll() {
-    return _db.bookmarkDao.watchAll();
+    return _dao.watchAll();
   }
 
   /// 检查书签中的文件是否存在，删除不存在的记录

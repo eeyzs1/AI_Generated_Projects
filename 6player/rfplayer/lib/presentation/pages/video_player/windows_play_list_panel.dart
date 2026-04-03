@@ -53,7 +53,7 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
                   key: ValueKey(item.id),
                   item: item,
                   index: index,
-                  isPlaying: item.isPlaying,
+                  isPlaying: item.isCurrentPlaying,
                   onTap: () => playQueueNotifier.playItem(item.id),
                   onDelete: () => playQueueNotifier.removeFromQueue(item.id),
                 );

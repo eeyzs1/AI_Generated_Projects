@@ -65,4 +65,17 @@ class FileUtils {
     // 这个方法会在平台特定实现中被调用
     return null;
   }
+
+  static List<FileSystemEntity> sortEntries(List<FileSystemEntity> entries) {
+    entries.sort((a, b) {
+      final aIsDir = a is Directory;
+      final bIsDir = b is Directory;
+      
+      if (aIsDir && !bIsDir) return -1;
+      if (!aIsDir && bIsDir) return 1;
+      
+      return a.path.split(Platform.pathSeparator).last.compareTo(b.path.split(Platform.pathSeparator).last);
+    });
+    return entries;
+  }
 }

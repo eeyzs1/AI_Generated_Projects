@@ -74,6 +74,10 @@ class PlayQueueRepository {
     await _playQueueDao.deleteAll();
   }
 
+  Future<void> clearExceptCurrentPlaying() async {
+    await _playQueueDao.deleteAllExceptCurrentPlaying();
+  }
+
   Future<void> setCurrentPlaying(String id) async {
     await _playQueueDao.setCurrentPlaying(id);
   }

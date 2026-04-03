@@ -19,8 +19,50 @@ class PlayQueueService {
     await _repository.remove(id);
   }
 
+  // 新的删除方法，处理当前播放视频的情况
+  // 返回值: true - 表示应该返回首页，false - 表示继续在当前页面
+  Future<bool> removeFromQueueWithHandling(String id) async {
+    final current = await _repository.getCurrentPlaying();
+    final queue = await _repository.getAll();
+    
+    // 检查是否是当前播放的视频
+    bool isCurrentPlaying = current != null && current.id == id;
+    
+    if (!isCurrentPlaying) {
+      // 不是当前播放的视频，直接删除
+      await _repository.remove(id);
+      return false;
+    }
+    
+    // 是当前播放的视频
+    int currentIndex = queue.indexWhere((item) => item.id == id);
+    bool isLastItem = currentIndex == queue.length - 1;
+    
+    if (queue.length <= 1) {
+      // 只有一个视频，删除并返回首页
+      await _repository.remove(id);
+      return true;
+    }
+    
+    if (!isLastItem) {
+      // 不是最后一个视频，先播放下一个，再删除当前视频
+      await playNext();
+      await _repository.remove(id);
+      return false;
+    } else {
+      // 是最后一个视频，但不止一个视频，从列表开头找一个来播放
+      // 先获取要播放的第一个视频（不是当前视频）
+      final firstItem = queue.firstWhere((item) => item.id != id, orElse: () => queue.first);
+      // 先播放这个视频
+      await _repository.setCurrentPlaying(firstItem.id);
+      // 再删除当前视频
+      await _repository.remove(id);
+      return false;
+    }
+  }
+
   Future<void> clearQueue() async {
-    await _repository.clear();
+    await _repository.clearExceptCurrentPlaying();
   }
 
   Future<void> playItem(String id) async {
@@ -35,6 +77,12 @@ class PlayQueueService {
     final next = await _repository.getNextItem(current.sortOrder);
     if (next != null) {
       await _repository.setCurrentPlaying(next.id);
+    } else {
+      // 如果没有下一个项目，从队列第一个开始播放
+      final queue = await _repository.getAll();
+      if (queue.isNotEmpty) {
+        await _repository.setCurrentPlaying(queue[0].id);
+      }
     }
   }
 
@@ -42,11 +90,17 @@ class PlayQueueService {
     final current = await _repository.getCurrentPlaying();
     if (current == null) return;
     
+    await _repository.markAsPlayed(current.id);
     final queue = await _repository.getAll();
     final currentIndex = queue.indexWhere((item) => item.id == current.id);
     if (currentIndex > 0) {
       final previous = queue[currentIndex - 1];
       await _repository.setCurrentPlaying(previous.id);
+    } else {
+      // 如果没有上一个项目，从队列最后一个开始播放
+      if (queue.isNotEmpty) {
+        await _repository.setCurrentPlaying(queue.last.id);
+      }
     }
   }
 

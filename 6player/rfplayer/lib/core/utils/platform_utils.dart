@@ -34,8 +34,27 @@ class PlatformUtils {
     if (isAndroid) {
       return '/storage/emulated/0';
     } else if (isWindows) {
-      return 'C:\\';
+      return r'C:\';
     }
     return null;
+  }
+
+  static Future<List<String>> getAvailableDrives() async {
+    if (isWindows) {
+      final drives = <String>[];
+      // 检查 A 到 Z 驱动器
+      for (var i = 65; i <= 90; i++) {
+        final drive = '${String.fromCharCode(i)}:\\';
+        if (Directory(drive).existsSync()) {
+          drives.add(drive);
+        }
+      }
+      return drives;
+    } else if (isAndroid) {
+      // Android 平台返回默认存储路径
+      final defaultPath = await getDefaultStoragePath();
+      return defaultPath != null ? [defaultPath] : [];
+    }
+    return [];
   }
 }

@@ -30,6 +30,13 @@ class PlayQueueDao extends DatabaseAccessor<AppDatabase> with _$PlayQueueDaoMixi
     await delete(playQueueTable).go();
   }
 
+  Future<void> deleteAllExceptCurrentPlaying() async {
+    await (delete(playQueueTable)..where((t) => t.isCurrentPlaying.equals(0))).go();
+    // 将当前播放项的 sortOrder 重置为 0
+    await (update(playQueueTable)..where((t) => t.isCurrentPlaying.equals(1)))
+        .write(PlayQueueTableCompanion(sortOrder: Value(0)));
+  }
+
   
 
   Future<void> reorder(List<String> orderedIds) async {

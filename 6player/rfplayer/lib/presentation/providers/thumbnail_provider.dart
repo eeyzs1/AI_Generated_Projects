@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/services/thumbnail_service.dart';
+import '../../data/models/play_history.dart';
+import 'database_provider.dart';
 
 /// ThumbnailService 的单例 Provider
 final thumbnailServiceProvider = Provider<ThumbnailService>((ref) {
@@ -14,7 +17,35 @@ final thumbnailServiceProvider = Provider<ThumbnailService>((ref) {
 /// 用于异步生成单个文件的缩略图
 final thumbnailGeneratorProvider = FutureProvider.family<String?, String>((ref, filePath) async {
   final service = ref.read(thumbnailServiceProvider);
-  return service.generateThumbnail(filePath);
+  final historyRepo = ref.read(historyRepositoryProvider);
+  
+  final thumbPath = await service.generateThumbnail(filePath);
+  
+  // 生成缩略图后，更新历史记录
+  if (thumbPath != null) {
+    try {
+      final history = await historyRepo.getByPath(filePath);
+      if (history != null) {
+        final updatedHistory = PlayHistory(
+          id: history.id,
+          path: history.path,
+          displayName: history.displayName,
+          extension: history.extension,
+          type: history.type,
+          lastPosition: history.lastPosition,
+          totalDuration: history.totalDuration,
+          lastPlayedAt: history.lastPlayedAt,
+          playCount: history.playCount,
+          thumbnailPath: thumbPath,
+        );
+        await historyRepo.upsert(updatedHistory);
+      }
+    } catch (e) {
+      debugPrint('更新历史记录缩略图失败: $e');
+    }
+  }
+  
+  return thumbPath;
 });
 
 /// 获取缓存的缩略图路径

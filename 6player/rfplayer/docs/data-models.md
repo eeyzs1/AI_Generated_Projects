@@ -150,6 +150,7 @@ class AppSettings {
 **索引：**
 - `idx_history_last_played_at` ON `last_played_at DESC`（历史列表排序）
 - `idx_history_path` ON `path`（upsert 查找）
+- `idx_history_type` ON `type`（按类型筛选）
 
 ### bookmarks 表
 
@@ -160,6 +161,9 @@ class AppSettings {
 | display_name | TEXT | NOT NULL | 显示名称 |
 | created_at | INTEGER | NOT NULL | Unix 时间戳（毫秒） |
 | sort_order | INTEGER | NOT NULL, DEFAULT 0 | 排序权重 |
+
+**索引：**
+- `idx_bookmarks_sort_order` ON `sort_order`（书签排序）
 
 ### play_queue 表
 
@@ -174,6 +178,32 @@ class AppSettings {
 | has_played | INTEGER | NOT NULL, DEFAULT 0 | 是否已播放完成（0/1） |
 | play_progress | REAL | NOT NULL, DEFAULT 0.0 | 播放进度（0.0-1.0） |
 | is_invalid | INTEGER | NOT NULL, DEFAULT 0 | 路径是否无效（0/1） |
+
+**索引：**
+- `idx_play_queue_sort_order` ON `sort_order`（队列排序）
+- `idx_play_queue_current_playing` ON `is_current_playing`（查找当前播放项）
+
+---
+
+## 数据验证
+
+- **路径验证**：确保文件路径有效且存在
+- **类型验证**：确保媒体类型正确
+- **范围验证**：确保播放进度在 0.0-1.0 之间
+- **非空验证**：确保必要字段不为空
+
+## 数据清理策略
+
+- **历史记录清理**：超过 `historyMaxItems` 时删除最旧的记录
+- **无效记录清理**：定期清理路径无效的记录
+- **缩略图清理**：当缩略图文件不存在时清理对应记录
+- **播放队列清理**：应用启动时清理无效路径的队列项
+
+## 索引优化
+
+- **复合索引**：为常用查询组合创建复合索引
+- **覆盖索引**：创建覆盖索引减少回表操作
+- **索引维护**：定期重建索引保持性能
 
 ---
 

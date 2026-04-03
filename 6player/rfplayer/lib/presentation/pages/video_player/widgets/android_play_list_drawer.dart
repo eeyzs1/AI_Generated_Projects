@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rfplayer/presentation/providers/play_queue_provider.dart';
+import 'package:rfplayer/core/localization/app_localizations.dart';
 import 'play_list_item.dart';
 
 class AndroidPlayListDrawer extends ConsumerStatefulWidget {
   final bool isVisible;
   final VoidCallback onClose;
+  final VoidCallback? onNavigateBack;
 
   const AndroidPlayListDrawer({
     super.key,
     required this.isVisible,
     required this.onClose,
+    this.onNavigateBack,
   });
 
   @override
@@ -20,6 +23,7 @@ class AndroidPlayListDrawer extends ConsumerStatefulWidget {
 class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
   @override
   Widget build(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
     final queue = ref.watch(playQueueProvider);
     final playQueueNotifier = ref.read(playQueueProvider.notifier);
 
@@ -52,9 +56,9 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  '播放列表',
-                  style: TextStyle(
+                Text(
+                  loc.playList,
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -71,7 +75,7 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
           Expanded(
             child: queue.isEmpty
                 ? Center(
-                    child: Text('播放列表为空'),
+                    child: Text(loc.playListEmpty),
                   )
                 : ListView.builder(
                     itemCount: queue.length,
@@ -88,7 +92,10 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
                           await playQueueNotifier.playItem(item.id);
                         },
                         onDelete: () async {
-                          await playQueueNotifier.removeFromQueue(item.id);
+                          final shouldNavigateBack = await playQueueNotifier.removeFromQueueWithHandling(item.id);
+                          if (shouldNavigateBack && widget.onNavigateBack != null) {
+                            widget.onNavigateBack!();
+                          }
                         },
                       );
                     },
@@ -108,19 +115,19 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
                   onPressed: () async {
                     await playQueueNotifier.playPrevious();
                   },
-                  child: const Text('上一个'),
+                  child: Text(loc.previous),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     await playQueueNotifier.playNext();
                   },
-                  child: const Text('下一个'),
+                  child: Text(loc.next),
                 ),
                 ElevatedButton(
                   onPressed: () async {
                     await playQueueNotifier.clearQueue();
                   },
-                  child: const Text('清空'),
+                  child: Text(loc.clear),
                 ),
               ],
             ),

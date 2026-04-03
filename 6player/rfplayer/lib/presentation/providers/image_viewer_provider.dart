@@ -1,139 +1,227 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
-import '../../../core/utils/file_utils.dart';
-import '../../../data/repositories/history_repository.dart';
-import '../../../data/models/play_history.dart';
-import '../../../presentation/providers/database_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import '../../core/extensions/string_extensions.dart';
+
+class ImageInfo {
+  final String fileName;
+  final String filePath;
+  final int width;
+  final int height;
+  final int fileSize;
+  final DateTime modifiedAt;
+  final String format;
+
+  ImageInfo({
+    required this.fileName,
+    required this.filePath,
+    required this.width,
+    required this.height,
+    required this.fileSize,
+    required this.modifiedAt,
+    required this.format,
+  });
+}
 
 class ImageViewerState {
-  final List<File> imageFiles;
+  final String currentPath;
   final int currentIndex;
+  final List<String> imagePaths;
+  final bool isUIVisible;
+  final double rotation;
+  final bool isFlippedHorizontal;
+  final bool isFlippedVertical;
+  final double currentScale;
+  final ImageInfo? imageInfo;
   final bool isLoading;
-  final String currentImagePath;
 
   ImageViewerState({
-    required this.imageFiles,
+    required this.currentPath,
     required this.currentIndex,
-    required this.isLoading,
-    required this.currentImagePath,
+    required this.imagePaths,
+    this.isUIVisible = true,
+    this.rotation = 0,
+    this.isFlippedHorizontal = false,
+    this.isFlippedVertical = false,
+    this.currentScale = 1.0,
+    this.imageInfo,
+    this.isLoading = false,
   });
 
+  String get currentFileName => p.basename(currentPath);
+  int get totalCount => imagePaths.length;
+  bool get canGoPrevious => currentIndex > 0;
+  bool get canGoNext => currentIndex < imagePaths.length - 1;
+
   ImageViewerState copyWith({
-    List<File>? imageFiles,
+    String? currentPath,
     int? currentIndex,
+    List<String>? imagePaths,
+    bool? isUIVisible,
+    double? rotation,
+    bool? isFlippedHorizontal,
+    bool? isFlippedVertical,
+    double? currentScale,
+    ImageInfo? imageInfo,
     bool? isLoading,
-    String? currentImagePath,
   }) {
     return ImageViewerState(
-      imageFiles: imageFiles ?? this.imageFiles,
+      currentPath: currentPath ?? this.currentPath,
       currentIndex: currentIndex ?? this.currentIndex,
+      imagePaths: imagePaths ?? this.imagePaths,
+      isUIVisible: isUIVisible ?? this.isUIVisible,
+      rotation: rotation ?? this.rotation,
+      isFlippedHorizontal: isFlippedHorizontal ?? this.isFlippedHorizontal,
+      isFlippedVertical: isFlippedVertical ?? this.isFlippedVertical,
+      currentScale: currentScale ?? this.currentScale,
+      imageInfo: imageInfo ?? this.imageInfo,
       isLoading: isLoading ?? this.isLoading,
-      currentImagePath: currentImagePath ?? this.currentImagePath,
     );
-  }
-
-  String get currentImageName {
-    return p.basename(currentImagePath);
-  }
-
-  int get totalImages {
-    return imageFiles.length;
-  }
-
-  bool get canGoPrevious {
-    return currentIndex > 0;
-  }
-
-  bool get canGoNext {
-    return currentIndex < imageFiles.length - 1;
   }
 }
 
 class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
-  final HistoryRepository historyRepository;
-
-  ImageViewerNotifier(this.historyRepository, String initialPath) : super(
+  ImageViewerNotifier(String initialPath) : super(
     ImageViewerState(
-      imageFiles: [],
+      currentPath: initialPath,
       currentIndex: 0,
+      imagePaths: [initialPath],
       isLoading: true,
-      currentImagePath: initialPath,
     ),
   ) {
-    loadImages(initialPath);
+    _initialize();
   }
 
-  Future<void> loadImages(String path) async {
-    final directoryPath = FileUtils.getDirectoryPath(path);
-    final imageFiles = FileUtils.getImageFilesInDirectory(directoryPath);
+  Future<void> _initialize() async {
+    await _loadDirectoryImages();
+    await _loadImageInfo();
+    state = state.copyWith(isLoading: false);
+  }
+
+  Future<void> _loadDirectoryImages() async {
+    final directory = p.dirname(state.currentPath);
+    final dir = Directory(directory);
     
-    int currentIndex = imageFiles.indexWhere((file) => file.path == path);
-    if (currentIndex == -1) {
-      currentIndex = 0;
+    if (await dir.exists()) {
+      final entries = await dir.list().toList();
+      final imagePaths = entries
+          .where((entry) => entry is File && entry.path.isImageFile)
+          .map((entry) => entry.path)
+          .toList();
+      
+      imagePaths.sort();
+      
+      final currentIndex = imagePaths.indexOf(state.currentPath);
+      
+      state = state.copyWith(
+        imagePaths: imagePaths,
+        currentIndex: currentIndex >= 0 ? currentIndex : 0,
+      );
     }
-
-    state = state.copyWith(
-      imageFiles: imageFiles,
-      currentIndex: currentIndex,
-      isLoading: false,
-      currentImagePath: imageFiles.isNotEmpty ? imageFiles[currentIndex].path : path,
-    );
-
-    // 添加或更新历史记录
-    await addOrUpdateHistory(path);
   }
 
-  Future<void> navigateToImage(int index) async {
-    if (index >= 0 && index < state.imageFiles.length) {
+  Future<void> _loadImageInfo() async {
+    try {
+      final file = File(state.currentPath);
+      if (await file.exists()) {
+        final stat = await file.stat();
+        final fileName = p.basename(state.currentPath);
+        final extension = p.extension(state.currentPath).toUpperCase().replaceAll('.', '');
+        
+        // 获取图片尺寸
+        final image = await decodeImageFromList(await file.readAsBytes());
+        
+        state = state.copyWith(
+          imageInfo: ImageInfo(
+            fileName: fileName,
+            filePath: state.currentPath,
+            width: image.width,
+            height: image.height,
+            fileSize: stat.size,
+            modifiedAt: stat.modified,
+            format: extension.isEmpty ? 'UNKNOWN' : extension,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading image info: $e');
+    }
+  }
+
+  void toggleUIVisibility() {
+    state = state.copyWith(isUIVisible: !state.isUIVisible);
+  }
+
+  void navigateToImage(int index) {
+    if (index >= 0 && index < state.imagePaths.length) {
       state = state.copyWith(
+        currentPath: state.imagePaths[index],
         currentIndex: index,
+        rotation: 0,
+        isFlippedHorizontal: false,
+        isFlippedVertical: false,
+        currentScale: 1.0,
+        imageInfo: null,
         isLoading: true,
-        currentImagePath: state.imageFiles[index].path,
       );
-
-      // 添加或更新历史记录
-      await addOrUpdateHistory(state.imageFiles[index].path);
-
+      _loadImageInfo();
       state = state.copyWith(isLoading: false);
     }
   }
 
-  Future<void> addOrUpdateHistory(String path) async {
-    var history = await historyRepository.getByPath(path);
-    
-    if (history == null) {
-      final extension = p.extension(path).substring(1).toLowerCase();
-      history = PlayHistory(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        path: path,
-        displayName: p.basename(path),
-        extension: extension,
-        type: MediaType.image,
-        lastPosition: Duration.zero,
-        totalDuration: Duration.zero,
-        lastPlayedAt: DateTime.now(),
-        playCount: 1,
-      );
-      await historyRepository.upsert(history);
-    } else {
-      final updatedHistory = PlayHistory(
-        id: history.id,
-        path: history.path,
-        displayName: history.displayName,
-        extension: history.extension,
-        type: history.type,
-        lastPosition: history.lastPosition,
-        totalDuration: history.totalDuration,
-        lastPlayedAt: DateTime.now(),
-        playCount: history.playCount + 1,
-      );
-      await historyRepository.upsert(updatedHistory);
+  void goToPrevious() {
+    if (state.canGoPrevious) {
+      navigateToImage(state.currentIndex - 1);
     }
+  }
+
+  void goToNext() {
+    if (state.canGoNext) {
+      navigateToImage(state.currentIndex + 1);
+    }
+  }
+
+  void rotateLeft() {
+    state = state.copyWith(rotation: (state.rotation - 90) % 360);
+  }
+
+  void rotateRight() {
+    state = state.copyWith(rotation: (state.rotation + 90) % 360);
+  }
+
+  void flipHorizontal() {
+    state = state.copyWith(isFlippedHorizontal: !state.isFlippedHorizontal);
+  }
+
+  void flipVertical() {
+    state = state.copyWith(isFlippedVertical: !state.isFlippedVertical);
+  }
+
+  void zoomIn() {
+    final newScale = (state.currentScale + 0.5).clamp(0.5, 5.0);
+    state = state.copyWith(currentScale: newScale);
+  }
+
+  void zoomOut() {
+    final newScale = (state.currentScale - 0.5).clamp(0.5, 5.0);
+    state = state.copyWith(currentScale: newScale);
+  }
+
+  void resetTransform() {
+    state = state.copyWith(
+      rotation: 0,
+      isFlippedHorizontal: false,
+      isFlippedVertical: false,
+      currentScale: 1.0,
+    );
+  }
+
+  void setScale(double scale) {
+    state = state.copyWith(currentScale: scale.clamp(0.5, 5.0));
   }
 }
 
-final imageViewerProvider = StateNotifierProvider.family<ImageViewerNotifier, ImageViewerState, String>((ref, path) {
-  final historyRepository = ref.watch(historyRepositoryProvider);
-  return ImageViewerNotifier(historyRepository, path);
-});
+final imageViewerProvider = StateNotifierProvider.family<ImageViewerNotifier, ImageViewerState, String>(
+  (ref, path) => ImageViewerNotifier(path),
+);

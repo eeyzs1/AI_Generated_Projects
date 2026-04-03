@@ -52,13 +52,9 @@ const Map<String, String> zhCN = {
   // 图片查看器
   'imageViewer': '图片查看器',
   'imageInfo': '图片信息',
-  'dimensions': '尺寸',
-  'size': '大小',
-  'modifiedTime': '修改时间',
 
   // 文件浏览器
   'fileBrowser': '文件浏览器',
-  'addBookmark': '添加书签',
   'showHiddenFiles': '显示隐藏文件',
   'defaultDirectory': '默认目录',
   'auto': '自动',
@@ -71,4 +67,47 @@ const Map<String, String> zhCN = {
   // 功能选择
   'playVideo': '播放视频',
   'viewImage': '查看图片',
+  
+  // 播放列表
+  'playList': '播放列表',
+  'playListEmpty': '播放列表为空',
+  'previous': '上一个',
+  'next': '下一个',
+  'clear': '清空',
+  
+  // 文件浏览器
+  'openFile': '打开文件',
+  'noRecentFiles': '暂无最近打开的文件',
+  
+  // 历史记录对话框
+  'clearHistory': '清空历史记录',
+  'sureToClearHistory': '确定要清空所有播放历史吗？此操作不可恢复。',
+  'historyCleared': '历史记录已清空',
+  'deleted': '已删除',
+  
+  // 功能卡片描述
+  'playVideoDesc': '选择并播放本地视频文件',
+  'viewImageDesc': '选择并查看本地图片文件',
+  
+  // 书签页面
+  'imageBookmarks': '图片书签',
+  'videoBookmarks': '视频书签',
+  'bookmarksCount': '个书签',
+  'clearAllBookmarks': '清空所有书签',
+  'sureToClearAllBookmarks': '确定要清空所有书签吗？此操作不可恢复。',
+  'allBookmarksCleared': '所有书签已清空',
+  'bookmarkDeleted': '已删除书签',
+  
+  // 图片查看器
+  'flipHorizontal': '水平翻转',
+  'flipVertical': '垂直翻转',
+  'fileName': '文件名',
+  'filePath': '路径',
+  'dimensions': '尺寸',
+  'pixels': '像素',
+  'fileSize': '大小',
+  'format': '格式',
+  'modifiedTime': '修改时间',
+  'removeBookmark': '删除书签',
+  'bookmarkRemoved': '书签已删除',
 };

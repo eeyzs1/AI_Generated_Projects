@@ -30,6 +30,10 @@ class MaterialShell extends StatelessWidget {
             label: localizations.fileBrowser,
           ),
           BottomNavigationBarItem(
+            icon: const Icon(Icons.bookmark),
+            label: '书签',
+          ),
+          BottomNavigationBarItem(
             icon: const Icon(Icons.settings),
             label: localizations.settings,
           ),
@@ -44,7 +48,8 @@ class MaterialShell extends StatelessWidget {
     if (location.startsWith('/home')) return 0;
     if (location.startsWith('/history')) return 1;
     if (location.startsWith('/files')) return 2;
-    if (location.startsWith('/settings')) return 3;
+    if (location.startsWith('/bookmark')) return 3;
+    if (location.startsWith('/settings')) return 4;
     return 0;
   }
 
@@ -60,6 +65,9 @@ class MaterialShell extends StatelessWidget {
         GoRouter.of(context).go('/files');
         break;
       case 3:
+        GoRouter.of(context).go('/bookmark');
+        break;
+      case 4:
         GoRouter.of(context).go('/settings');
         break;
     }

@@ -94,6 +94,47 @@ class AppLocalizations {
   // 功能选择
   String get playVideo => localizedStrings['playVideo']!;
   String get viewImage => localizedStrings['viewImage']!;
+  
+  // 播放列表
+  String get playList => localizedStrings['playList']!;
+  String get playListEmpty => localizedStrings['playListEmpty']!;
+  String get previous => localizedStrings['previous']!;
+  String get next => localizedStrings['next']!;
+  String get clear => localizedStrings['clear']!;
+  
+  // 文件浏览器
+  String get openFile => localizedStrings['openFile']!;
+  String get noRecentFiles => localizedStrings['noRecentFiles']!;
+  
+  // 历史记录对话框
+  String get clearHistory => localizedStrings['clearHistory']!;
+  String get sureToClearHistory => localizedStrings['sureToClearHistory']!;
+  String get historyCleared => localizedStrings['historyCleared']!;
+  String get deleted => localizedStrings['deleted']!;
+  
+  // 功能卡片描述
+  String get playVideoDesc => localizedStrings['playVideoDesc']!;
+  String get viewImageDesc => localizedStrings['viewImageDesc']!;
+  
+  // 书签页面
+  String get imageBookmarks => localizedStrings['imageBookmarks']!;
+  String get videoBookmarks => localizedStrings['videoBookmarks']!;
+  String get bookmarksCount => localizedStrings['bookmarksCount']!;
+  String get clearAllBookmarks => localizedStrings['clearAllBookmarks']!;
+  String get sureToClearAllBookmarks => localizedStrings['sureToClearAllBookmarks']!;
+  String get allBookmarksCleared => localizedStrings['allBookmarksCleared']!;
+  String get bookmarkDeleted => localizedStrings['bookmarkDeleted']!;
+  
+  // 图片查看器
+  String get flipHorizontal => localizedStrings['flipHorizontal']!;
+  String get flipVertical => localizedStrings['flipVertical']!;
+  String get fileName => localizedStrings['fileName']!;
+  String get filePath => localizedStrings['filePath']!;
+  String get pixels => localizedStrings['pixels']!;
+  String get format => localizedStrings['format']!;
+  String get fileSize => localizedStrings['fileSize']!;
+  String get removeBookmark => localizedStrings['removeBookmark']!;
+  String get bookmarkRemoved => localizedStrings['bookmarkRemoved']!;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

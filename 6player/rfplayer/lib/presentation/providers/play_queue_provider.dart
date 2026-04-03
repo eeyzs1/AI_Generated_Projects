@@ -36,6 +36,12 @@ class PlayQueueNotifier extends StateNotifier<List<PlayQueueItem>> {
     await _loadQueue();
   }
 
+  Future<bool> removeFromQueueWithHandling(String id) async {
+    final shouldNavigateBack = await _service.removeFromQueueWithHandling(id);
+    await _loadQueue();
+    return shouldNavigateBack;
+  }
+
   Future<void> clearQueue() async {
     await _service.clearQueue();
     await _loadQueue();

@@ -54,6 +54,7 @@ dependencies:
   json_annotation: ^4.9.0
   uuid: ^4.4.2
   fc_native_video_thumbnail: ^2.1.1
+  fluttertoast: ^8.2.12
 
 dev_dependencies:
   flutter_test:

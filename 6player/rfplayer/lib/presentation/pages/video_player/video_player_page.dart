@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../../core/utils/toast_utils.dart';
 
 import 'video_player_controller.dart';
 import 'speed_control.dart';
@@ -13,6 +14,7 @@ import '../../../data/models/bookmark.dart';
 import '../../../presentation/providers/database_provider.dart';
 import '../../../presentation/providers/settings_provider.dart';
 import '../../../presentation/providers/play_queue_provider.dart';
+import '../../../presentation/providers/video_bookmark_provider.dart';
 import 'widgets/windows_play_list_panel.dart';
 import 'widgets/android_play_list_drawer.dart';
 import 'package:uuid/uuid.dart';
@@ -23,8 +25,9 @@ import '../../../data/models/play_history.dart' as ph;
 
 class VideoPlayerPage extends ConsumerStatefulWidget {
   final String path;
+  final Duration? initialPosition;
 
-  const VideoPlayerPage({super.key, required this.path});
+  const VideoPlayerPage({super.key, required this.path, this.initialPosition});
 
   @override
   ConsumerState<VideoPlayerPage> createState() => _VideoPlayerPageState();
@@ -41,8 +44,13 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   bool _showVolumeControl = false;
   bool _isAppBarVisible = true;
   bool _showPlayListDrawer = false;
+  bool _showPlayListPanel = true; // Windows端播放列表面板显示状态
   late FocusNode _focusNode;
   late FocusAttachment _focusAttachment;
+  bool _isUpdateLoopRunning = false;
+  
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   // 操作队列，确保一次只执行一个播放器操作
   bool _isProcessing = false;
@@ -163,6 +171,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
           setState(() {
             _isInitialized = true;
           });
+          _updatePlayerState();
         }
       }
     } catch (e) {
@@ -177,6 +186,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       final settings = ref.read(settingsProvider);
       _playbackSpeed = settings.defaultPlaybackSpeed;
 
+      final playQueueNotifier = ref.read(playQueueProvider.notifier);
       final playQueueService = ref.read(playQueueServiceProvider);
       
       // 先检查播放队列中是否已有该视频
@@ -186,11 +196,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       if (videoExists) {
         // 如果队列中已有该视频，直接使用它
         final existingItem = queue.firstWhere((item) => item.path == widget.path);
-        await playQueueService.playItem(existingItem.id);
+        await playQueueNotifier.playItem(existingItem.id);
       } else {
         // 如果队列中没有该视频，则添加到队列
         try {
-          await playQueueService.addToQueue(widget.path, p.basename(widget.path));
+          await playQueueNotifier.addToQueue(widget.path, p.basename(widget.path));
           // 设置当前播放项为新添加的视频
           final updatedQueue = await playQueueService.getQueue();
           // 安全地查找刚添加的项目
@@ -198,7 +208,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
             (item) => item.path == widget.path,
             orElse: () => updatedQueue.isNotEmpty ? updatedQueue[0] : (() { throw StateError("Queue is empty after adding item"); })(),
           );
-          await playQueueService.playItem(newlyAddedItem.id);
+          await playQueueNotifier.playItem(newlyAddedItem.id);
         } catch (e) {
           print('Error adding video to queue: $e');
         }
@@ -224,6 +234,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       await playerService.initialize(currentPlaying.path, ref);
       playerService.setPlaybackSpeed(_playbackSpeed);
 
+      // 如果有初始位置，跳转到该位置
+      if (widget.initialPosition != null) {
+        playerService.seek(widget.initialPosition!);
+      }
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -241,6 +256,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   }
 
   Future<void> _updatePlayerState() async {
+    if (_isUpdateLoopRunning) return;
+    _isUpdateLoopRunning = true;
+    
     while (mounted) {
       try {
         if (!_isSliderDragging && mounted) {
@@ -271,8 +289,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         debugPrint('Error updating player state: $e');
       }
 
+      if (!mounted) break;
       await Future.delayed(const Duration(milliseconds: 300));
     }
+    
+    _isUpdateLoopRunning = false;
   }
 
   // 操作队列处理
@@ -517,6 +538,76 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     }
   }
 
+  // ── 视频书签功能 ───────────────────────────────────────────────
+
+  Future<void> _addVideoBookmark() async {
+    final playerService = ref.read(playerServiceProvider);
+    if (!playerService.isInitialized || playerService.controller == null) return;
+    
+    final currentPosition = playerService.controller!.position;
+    final videoPath = widget.path;
+    final videoName = p.basename(videoPath);
+    
+    // 显示添加书签对话框
+    if (mounted) {
+      String? note;
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('添加书签'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('当前位置: ${_formatDuration(currentPosition)}'),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: '备注（可选）',
+                  hintText: '输入书签备注',
+                ),
+                onChanged: (value) => note = value,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await ref.read(videoBookmarkProvider.notifier).addBookmark(
+                  videoPath,
+                  videoName,
+                  currentPosition,
+                  note: note?.isNotEmpty == true ? note : null,
+                );
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ToastUtils.showToast(
+                    context,
+                    '书签已添加: ${_formatDuration(currentPosition)}',
+                  );
+                }
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   // ── 键盘快捷键 ────────────────────────────────────────────────
 
   void _handleKey(RawKeyEvent event) {
@@ -584,9 +675,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       }
     });
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: _isAppBarVisible
+    return ScaffoldMessenger(
+      key: _scaffoldMessengerKey,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: _isAppBarVisible
           ? AppBar(
               backgroundColor: Colors.black,
               iconTheme: const IconThemeData(color: Colors.white),
@@ -620,177 +713,200 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                 Expanded(
                   child: Stack(
                     children: [
-                      // 视频画面
-                      GestureDetector(
-                        onTap: () {
-                          if (!_isAppBarVisible) {
-                            setState(() {
-                              _isAppBarVisible = true;
-                            });
-                          }
-                        },
-                        child: SizedBox.expand(
-                          child: _isInitialized
-                              ? VideoPlayer(ref.read(playerServiceProvider).controller!.videoController)
-                              : const Center(
-                                  child: CircularProgressIndicator(color: Colors.blue),
-                                ),
-                        ),
-                      ),
+                      // 视频和控制栏区域
+                      Column(
+                        children: [
+                          // 视频画面
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                if (!_isAppBarVisible) {
+                                  setState(() {
+                                    _isAppBarVisible = true;
+                                  });
+                                }
+                              },
+                              child: SizedBox.expand(
+                                child: _isInitialized
+                                    ? VideoPlayer(ref.read(playerServiceProvider).controller!.videoController)
+                                    : const Center(
+                                        child: CircularProgressIndicator(color: Colors.blue),
+                                      ),
+                              ),
+                            ),
+                          ),
 
-                      // 底部控制栏
-                      if (_isAppBarVisible)
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            color: Colors.black,
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              children: [
-                                // 进度条
-                                Row(
-                                  children: [
-                                    Text(
-                                      '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                    Expanded(
-                                      child: Slider(
-                                        value: _duration.inMilliseconds > 0
-                                            ? (_position.inMilliseconds /
-                                                    _duration.inMilliseconds)
-                                                .clamp(0.0, 1.0)
-                                            : 0.0,
-                                        onChangeStart: _onSliderChangeStart,
-                                        onChanged: _onSliderChanged,
-                                        onChangeEnd: _onSliderChangeEnd,
-                                        activeColor: Colors.blue,
-                                        inactiveColor: Colors.grey[700],
+                          // 底部控制栏
+                          if (_isAppBarVisible)
+                            Container(
+                              color: Colors.black,
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  // 进度条
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
+                                        style: const TextStyle(color: Colors.white),
                                       ),
-                                    ),
-                                    Text(
-                                      '${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                  ],
-                                ),
-                                // 控制按钮行
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.skip_previous,
-                                          color: Colors.white),
-                                      onPressed: () async {
-                                        _focusNode.requestFocus();
-                                        final playQueueNotifier = ref.read(playQueueProvider.notifier);
-                                        await playQueueNotifier.playPrevious();
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: Icon(
-                                        _isCompleted
-                                            ? Icons.replay
-                                            : (_isPlaying ? Icons.pause : Icons.play_arrow),
-                                        color: Colors.white,
-                                        size: 32,
+                                      Expanded(
+                                        child: Slider(
+                                          value: _duration.inMilliseconds > 0
+                                              ? (_position.inMilliseconds /
+                                                      _duration.inMilliseconds)
+                                                  .clamp(0.0, 1.0)
+                                              : 0.0,
+                                          onChangeStart: _onSliderChangeStart,
+                                          onChanged: _onSliderChanged,
+                                          onChangeEnd: _onSliderChangeEnd,
+                                          activeColor: Colors.blue,
+                                          inactiveColor: Colors.grey[700],
+                                        ),
                                       ),
-                                      onPressed: () {
-                                        _focusNode.requestFocus();
-                                        _togglePlayPause();
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.skip_next,
-                                          color: Colors.white),
-                                      onPressed: () async {
-                                        _focusNode.requestFocus();
-                                        final playQueueNotifier = ref.read(playQueueProvider.notifier);
-                                        await playQueueNotifier.playNext();
-                                      },
-                                    ),
-                                    // 音量控制
-                                    Row(
-                                      children: [
+                                      Text(
+                                        '${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                  // 控制按钮行
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.skip_previous,
+                                            color: Colors.white),
+                                        onPressed: () async {
+                                          _focusNode.requestFocus();
+                                          final playQueueNotifier = ref.read(playQueueProvider.notifier);
+                                          await playQueueNotifier.playPrevious();
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: Icon(
+                                          _isCompleted
+                                              ? Icons.replay
+                                              : (_isPlaying ? Icons.pause : Icons.play_arrow),
+                                          color: Colors.white,
+                                          size: 32,
+                                        ),
+                                        onPressed: () {
+                                          _focusNode.requestFocus();
+                                          _togglePlayPause();
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.skip_next,
+                                            color: Colors.white),
+                                        onPressed: () async {
+                                          _focusNode.requestFocus();
+                                          final playQueueNotifier = ref.read(playQueueProvider.notifier);
+                                          await playQueueNotifier.playNext();
+                                        },
+                                      ),
+                                      // 音量控制
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: Icon(
+                                              _volume == 0
+                                                  ? Icons.volume_mute
+                                                  : _volume < 0.5
+                                                      ? Icons.volume_down
+                                                      : Icons.volume_up,
+                                              color: Colors.white,
+                                            ),
+                                            onPressed: () {
+                                              _focusNode.requestFocus();
+                                              _toggleVolumeControl();
+                                            },
+                                          ),
+                                          Text(
+                                            '${(_volume * 100).round()}%',
+                                            style: const TextStyle(color: Colors.white),
+                                          ),
+                                        ],
+                                      ),
+                                      // 字幕按钮
+                                      IconButton(
+                                        icon: const Icon(Icons.closed_caption, color: Colors.white),
+                                        onPressed: () {
+                                          _focusNode.requestFocus();
+                                          _addSubtitle();
+                                        },
+                                      ),
+                                      // 书签按钮
+                                      IconButton(
+                                        icon: const Icon(Icons.bookmark, color: Colors.white),
+                                        onPressed: () {
+                                          _focusNode.requestFocus();
+                                          _addVideoBookmark();
+                                        },
+                                      ),
+                                      // 倍速按钮
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          _focusNode.requestFocus();
+                                          if (mounted) {
+                                            setState(() {
+                                              _showSpeedControl = !_showSpeedControl;
+                                            });
+                                          }
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.grey[800],
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: Text('${_playbackSpeed.toStringAsFixed(2)}x'),
+                                      ),
+                                      // Windows端播放列表切换按钮
+                                      if (Platform.isWindows)
                                         IconButton(
                                           icon: Icon(
-                                            _volume == 0
-                                                ? Icons.volume_mute
-                                                : _volume < 0.5
-                                                    ? Icons.volume_down
-                                                    : Icons.volume_up,
+                                            _showPlayListPanel ? Icons.playlist_add_check : Icons.playlist_play,
                                             color: Colors.white,
                                           ),
                                           onPressed: () {
                                             _focusNode.requestFocus();
-                                            _toggleVolumeControl();
+                                            setState(() {
+                                              _showPlayListPanel = !_showPlayListPanel;
+                                            });
                                           },
                                         ),
-                                        Text(
-                                          '${(_volume * 100).round()}%',
-                                          style: const TextStyle(color: Colors.white),
+                                      // 隐藏/显示控制栏
+                                      IconButton(
+                                        icon: Icon(
+                                          _isAppBarVisible
+                                              ? Icons.visibility_off
+                                              : Icons.visibility,
+                                          color: Colors.white,
                                         ),
-                                      ],
-                                    ),
-                                    // 字幕按钮
-                                    IconButton(
-                                      icon: const Icon(Icons.closed_caption, color: Colors.white),
-                                      onPressed: () {
-                                        _focusNode.requestFocus();
-                                        _addSubtitle();
-                                      },
-                                    ),
-                                    // 倍速按钮
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        _focusNode.requestFocus();
+                                        onPressed: () {
+                                          _focusNode.requestFocus();
+                                          _toggleAppBar();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                  // 倍速控制面板
+                                  if (_showSpeedControl)
+                                    SpeedControl(
+                                      currentSpeed: _playbackSpeed,
+                                      controller: ref.read(playerServiceProvider).controller!,
+                                      onSpeedChanged: (speed) {
                                         if (mounted) {
                                           setState(() {
-                                            _showSpeedControl = !_showSpeedControl;
+                                            _playbackSpeed = speed;
                                           });
                                         }
                                       },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.grey[800],
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: Text('${_playbackSpeed.toStringAsFixed(2)}x'),
+                                      onSpeedChangeFinal: _handleSpeedChangeFinal,
                                     ),
-                                    // 隐藏/显示控制栏
-                                    IconButton(
-                                      icon: Icon(
-                                        _isAppBarVisible
-                                            ? Icons.visibility_off
-                                            : Icons.visibility,
-                                        color: Colors.white,
-                                      ),
-                                      onPressed: () {
-                                        _focusNode.requestFocus();
-                                        _toggleAppBar();
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                // 倍速控制面板
-                                if (_showSpeedControl)
-                                  SpeedControl(
-                                    currentSpeed: _playbackSpeed,
-                                    controller: ref.read(playerServiceProvider).controller!,
-                                    onSpeedChanged: (speed) {
-                                      if (mounted) {
-                                        setState(() {
-                                          _playbackSpeed = speed;
-                                        });
-                                      }
-                                    },
-                                    onSpeedChangeFinal: _handleSpeedChangeFinal,
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
+                          ]),
 
                       // 音量调节条
                       if (_showVolumeControl)
@@ -848,75 +964,77 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                   ),
                 ),
                 // Windows端右侧播放列表面板
-                const WindowsPlayListPanel(),
+                if (_showPlayListPanel)
+                  WindowsPlayListPanel(onNavigateBack: _handleBackPress),
               ],
             )
           : Stack(
               children: [
-                // 视频画面
-                GestureDetector(
-                  onTap: () {
-                    if (!_isAppBarVisible) {
-                      setState(() {
-                        _isAppBarVisible = true;
-                      });
-                    }
-                  },
-                  child: SizedBox.expand(
-                          child: _isInitialized
-                              ? VideoPlayer(ref.read(playerServiceProvider).controller!.videoController)
-                              : const Center(
-                                  child: CircularProgressIndicator(color: Colors.blue),
-                                ),
-                        ),
-                ),
+                // 视频和控制栏区域
+                Column(
+                  children: [
+                    // 视频画面
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!_isAppBarVisible) {
+                            setState(() {
+                              _isAppBarVisible = true;
+                            });
+                          }
+                        },
+                        child: SizedBox.expand(
+                                child: _isInitialized
+                                    ? VideoPlayer(ref.read(playerServiceProvider).controller!.videoController)
+                                    : const Center(
+                                        child: CircularProgressIndicator(color: Colors.blue),
+                                      ),
+                              ),
+                      ),
+                    ),
 
-                // 底部控制栏
-                if (_isAppBarVisible)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      color: Colors.black,
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          // 进度条
-                          Row(
-                            children: [
-                              Text(
-                                '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Expanded(
-                                child: Slider(
-                                  value: _duration.inMilliseconds > 0
-                                      ? (_position.inMilliseconds /
-                                              _duration.inMilliseconds)
-                                          .clamp(0.0, 1.0)
-                                      : 0.0,
-                                  onChangeStart: _onSliderChangeStart,
-                                  onChanged: _onSliderChanged,
-                                  onChangeEnd: _onSliderChangeEnd,
-                                  activeColor: Colors.blue,
-                                  inactiveColor: Colors.grey[700],
+                    // 底部控制栏
+                    if (_isAppBarVisible)
+                      Container(
+                        color: Colors.black,
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            // 进度条
+                            Row(
+                              children: [
+                                Text(
+                                  '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
+                                  style: const TextStyle(color: Colors.white),
                                 ),
-                              ),
-                              Text(
-                                '${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                          // 控制按钮行
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.skip_previous,
-                                    color: Colors.white),
-                                onPressed: () async {
+                                Expanded(
+                                  child: Slider(
+                                    value: _duration.inMilliseconds > 0
+                                        ? (_position.inMilliseconds /
+                                                _duration.inMilliseconds)
+                                            .clamp(0.0, 1.0)
+                                        : 0.0,
+                                    onChangeStart: _onSliderChangeStart,
+                                    onChanged: _onSliderChanged,
+                                    onChangeEnd: _onSliderChangeEnd,
+                                    activeColor: Colors.blue,
+                                    inactiveColor: Colors.grey[700],
+                                  ),
+                                ),
+                                Text(
+                                  '${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                            // 控制按钮行
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.skip_previous,
+                                      color: Colors.white),
+                                  onPressed: () async {
                                   _focusNode.requestFocus();
                                   final playQueueNotifier = ref.read(playQueueProvider.notifier);
                                   await playQueueNotifier.playPrevious();
@@ -975,6 +1093,14 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                                   _addSubtitle();
                                 },
                               ),
+                              // 书签按钮
+                              IconButton(
+                                icon: const Icon(Icons.bookmark, color: Colors.white),
+                                onPressed: () {
+                                  _focusNode.requestFocus();
+                                  _addVideoBookmark();
+                                },
+                              ),
                               // 倍速按钮
                               ElevatedButton(
                                 onPressed: () {
@@ -1022,10 +1148,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                             ),
                         ],
                       ),
-                    ),
-                  ),
+                            ),
+                          ],
+                        ),
 
-                // 音量调节条
+                      // 音量调节条
                 if (_showVolumeControl)
                   Stack(
                     children: [
@@ -1091,10 +1218,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                           _showPlayListDrawer = false;
                         });
                       },
+                      onNavigateBack: _handleBackPress,
                     ),
                   ),
               ],
             ),
+      ),
     );
   }
 }

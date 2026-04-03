@@ -3,6 +3,7 @@ import '../shell/main_shell.dart';
 import '../pages/home/home_page.dart';
 import '../pages/history/history_page.dart';
 import '../pages/file_browser/file_browser_page.dart';
+import '../pages/bookmark/bookmark_page.dart';
 import '../pages/settings/settings_page.dart';
 import '../pages/video_player/video_player_page.dart';
 import '../pages/image_viewer/image_viewer_page.dart';
@@ -16,14 +17,23 @@ final appRouter = GoRouter(
         GoRoute(path: '/home', builder: (_, _) => const HomePage()),
         GoRoute(path: '/history', builder: (_, _) => const HistoryPage()),
         GoRoute(path: '/files', builder: (_, _) => const FileBrowserPage()),
+        GoRoute(path: '/bookmark', builder: (_, _) => const BookmarkPage()),
         GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
       ],
     ),
     GoRoute(
       path: '/video-player',
       builder: (_, state) {
-        final path = state.extra as String;
-        return VideoPlayerPage(path: path);
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          // 从书签页面传递过来的数据
+          final path = extra['path'] as String;
+          final position = extra['position'] as Duration?;
+          return VideoPlayerPage(path: path, initialPosition: position);
+        } else {
+          // 从其他页面传递过来的数据（直接传递路径字符串）
+          return VideoPlayerPage(path: extra as String);
+        }
       },
     ),
     GoRoute(path: '/image-viewer', builder: (_, state) => ImageViewerPage(path: state.extra as String)),

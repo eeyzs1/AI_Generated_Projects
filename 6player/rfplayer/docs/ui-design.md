@@ -17,7 +17,7 @@ MainShell (ShellRoute)
 └── ImageViewerPage        /image-viewer?path=...&dir=...
 ```
 
----
+***
 
 ## Tab 1 — 功能选择页（HomePage）
 
@@ -67,7 +67,7 @@ FeatureCard
 final settings = ref.watch(settingsProvider);
 ```
 
----
+***
 
 ## Tab 2 — 播放历史页（HistoryPage）
 
@@ -124,7 +124,7 @@ class HistoryNotifier extends _$HistoryNotifier {
 }
 ```
 
----
+***
 
 ## Tab 3 — 文件浏览器页（FileBrowserPage）
 
@@ -197,7 +197,7 @@ class FileBrowserState {
 }
 ```
 
----
+***
 
 ## Tab 4 — 设置页（SettingsPage）
 
@@ -227,7 +227,7 @@ SettingsPage (ConsumerWidget)
                 → onTap: FilePicker.getDirectoryPath()
 ```
 
----
+***
 
 ## 视频播放页（VideoPlayerPage）
 
@@ -236,6 +236,7 @@ SettingsPage (ConsumerWidget)
 ### Widget 树
 
 **Windows 端**：
+
 ```
 VideoPlayerPage (ConsumerWidget)
 └── Scaffold(backgroundColor: black)
@@ -297,6 +298,7 @@ VideoPlayerPage (ConsumerWidget)
 ```
 
 **Android 端**：
+
 ```
 VideoPlayerPage (ConsumerWidget)
 └── Scaffold(backgroundColor: black)
@@ -382,50 +384,174 @@ void dispose() {
 }
 ```
 
----
+***
 
 ## 图片查看页（ImageViewerPage）
 
-**职责**：全屏图片查看，支持缩放、滑动切换同目录图片。
+**职责**：全屏图片查看，支持缩放、滑动切换同目录图片，提供丰富的图片操作功能。
+
+### 功能特性
+
+1. **手势操作**
+   - 双击缩放：双击图片在 1x 和 3x 之间切换
+   - 捏合缩放：支持 0.5x - 5x 自由缩放
+   - 拖拽平移：缩放后可拖拽查看图片细节
+   - 滑动切换：左右滑动切换同目录图片
+2. **UI 控制**
+   - 点击切换 UI 显隐：点击非按钮区域显示/隐藏工具栏
+   - 工具栏 3 秒无操作自动隐藏
+   - 显示当前图片索引和总数
+3. **图片操作**
+   - 顺时针旋转 90°
+   - 逆时针旋转 90°
+   - 水平翻转
+   - 垂直翻转
+   - 重置所有变换
+4. **文件操作**
+   - 添加书签
+   - 查看图片信息（尺寸、大小、修改时间）
+   - 删除图片（带确认对话框）
+   - 分享图片
+5. **浏览模式**
+   - 支持同目录图片自动加载
+   - 循环浏览（到最后一张后回到第一张）
+   - 图片预加载（前后各预加载 2 张）
 
 ### Widget 树
 
 ```
-ImageViewerPage (ConsumerWidget)
+ImageViewerPage (ConsumerStatefulWidget)
 └── Scaffold(backgroundColor: black)
     └── Stack
         ├── PageView.builder (同目录图片列表)
         │   └── ExtendedImage.file(
         │         path,
-        │         mode: ExtendedImageGesturePageViewMode,
+        │         mode: ExtendedImageMode.gesture,
         │         initGestureConfigHandler: (state) => GestureConfig(
-        │           minScale: 0.9,
-        │           maxScale: 3.0,
+        │           minScale: 0.5,
+        │           maxScale: 5.0,
         │           initialScale: 1.0,
         │           inPageView: true,
-        │         )
+        │         ),
+        │         onDoubleTap: (state) => handleDoubleTap(state),
         │       )
-        └── AnimatedOpacity (UI 层，点击切换显隐)
-            ├── TopBar
-            │   ├── BackButton
-            │   ├── Text("${currentIndex + 1} / ${totalCount}")
-            │   └── IconButton(info) → ImageInfoOverlay
-            └── BottomBar
-                └── Text(currentFileName)
+        ├── AnimatedOpacity (TopBar，点击切换显隐)
+        │   └── AppBar(
+        │         backgroundColor: Colors.black.withOpacity(0.7),
+        │         leading: BackButton(onPressed: () => Navigator.pop()),
+        │         title: Text("${currentIndex + 1} / ${totalCount} - ${currentFileName}"),
+        │         actions: [
+        │           IconButton(rotate_left, onPressed: rotateLeft),
+        │           IconButton(rotate_right, onPressed: rotateRight),
+        │           IconButton(flip, onPressed: showFlipMenu),
+        │           IconButton(info, onPressed: showImageInfo),
+        │           IconButton(more_vert, onPressed: showMoreMenu),
+        │         ],
+        │       )
+        ├── AnimatedOpacity (BottomBar，点击切换显隐)
+        │   └── Container(
+        │         color: Colors.black.withOpacity(0.7),
+        │         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        │         child: Row(
+        │           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        │           children: [
+        │             IconButton(Icons.rotate_left, onPressed: rotateLeft),
+        │             IconButton(Icons.rotate_right, onPressed: rotateRight),
+        │             IconButton(Icons.flip, onPressed: showFlipMenu),
+        │             IconButton(Icons.zoom_in, onPressed: zoomIn),
+        │             IconButton(Icons.zoom_out, onPressed: zoomOut),
+        │             IconButton(Icons.fit_screen, onPressed: resetTransform),
+        │           ],
+        │         ),
+        │       )
+        ├── Positioned (左侧切换按钮)
+        │   └── IconButton(
+        │         icon: Icons.chevron_left,
+        │         onPressed: canGoPrevious ? goToPrevious : null,
+        │       )
+        ├── Positioned (右侧切换按钮)
+        │   └── IconButton(
+        │         icon: Icons.chevron_right,
+        │         onPressed: canGoNext ? goToNext : null,
+        │       )
+        └── ImageInfoOverlay (底部弹出面板，显示图片详细信息)
 ```
+
+### ImageViewerState
+
+```dart
+class ImageViewerState {
+  final String currentPath;
+  final String currentFileName;
+  final int currentIndex;
+  final int totalCount;
+  final List<String> imagePaths;  // 同目录所有图片路径
+  final bool isUIVisible;
+  final double rotation;  // 旋转角度（0, 90, 180, 270）
+  final bool isFlippedHorizontal;
+  final bool isFlippedVertical;
+  final double currentScale;
+  final ImageInfo? imageInfo;  // 图片详细信息
+}
+
+class ImageInfo {
+  final String fileName;
+  final String filePath;
+  final int width;
+  final int height;
+  final int fileSize;
+  final DateTime modifiedAt;
+  final String format;  // 图片格式（JPEG, PNG, etc.）
+}
+```
+
+### 手势操作说明
+
+| 手势   | 操作              |
+| ---- | --------------- |
+| 单击   | 显示/隐藏 UI 工具栏    |
+| 双击   | 缩放切换（1x ↔ 3x）   |
+| 捏合   | 自由缩放（0.5x - 5x） |
+| 拖拽   | 平移查看（缩放后）       |
+| 左右滑动 | 切换图片            |
+
+### 底部操作栏按钮
+
+| 图标            | 功能    | 说明        |
+| ------------- | ----- | --------- |
+| rotate\_left  | 逆时针旋转 | 每次旋转 90°  |
+| rotate\_right | 顺时针旋转 | 每次旋转 90°  |
+| flip          | 翻转菜单  | 水平/垂直翻转   |
+| zoom\_in      | 放大    | 每次放大 0.5x |
+| zoom\_out     | 缩小    | 每次缩小 0.5x |
+| fit\_screen   | 重置    | 重置所有变换    |
+
+### 更多菜单（more\_vert）
+
+- 添加书签
+- 查看详细信息
+- 删除图片
+- 分享图片
+- 设置为壁纸（Android）
 
 ### ImageInfoOverlay
 
 ```
 ImageInfoOverlay (底部弹出面板)
-└── Column
-    ├── Text(fileName)
-    ├── Text("尺寸: ${width} × ${height}")
-    ├── Text("大小: ${formatFileSize(fileSize)}")
-    └── Text("修改时间: ${formatDateTime(modifiedAt)}")
+└── Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("文件名: ${fileName}"),
+        Text("路径: ${filePath}"),
+        Text("尺寸: ${width} × ${height} 像素"),
+        Text("大小: ${formatFileSize(fileSize)}"),
+        Text("格式: ${format}"),
+        Text("修改时间: ${formatDateTime(modifiedAt)}"),
+      ],
+    )
 ```
 
----
+***
 
 ## 主题切换机制
 
@@ -461,3 +587,41 @@ class RFPlayerApp extends ConsumerWidget {
 ```
 
 **切换无需重启**：`settingsProvider` 变化 → `app.dart` Consumer 重建 → 整个 Widget 树使用新主题。
+
+***
+
+## 无障碍设计
+
+- **屏幕阅读器支持**：为所有 UI 元素添加语义标签
+- **键盘导航**：确保所有功能可通过键盘访问
+- **颜色对比度**：符合 WCAG 2.1 AA 级标准
+- **字体大小**：支持系统字体大小设置
+- **高对比度模式**：适配系统高对比度设置
+
+## 响应式设计
+
+- **断点设计**：
+  - 小屏幕（< 600px）：单列布局，简化控制界面
+  - 中屏幕（600px - 1024px）：双列布局，适当显示更多信息
+  - 大屏幕（> 1024px）：多列布局，完整功能展示
+- **窗口缩放**：Windows 端支持窗口大小调整，最小宽度 800px
+- **设备旋转**：Android 端支持横竖屏切换，视频播放页锁定横屏
+
+## 动画效果
+
+- **页面切换**：平滑的淡入淡出过渡
+- **控制栏**：3 秒无操作自动隐藏，点击屏幕显示
+- **播放状态**：播放/暂停按钮的平滑过渡动画
+- **进度条**：播放进度的平滑更新动画
+- **列表滚动**：流畅的滚动效果，支持快速滚动
+- **抽屉/面板**：平滑的滑入滑出动画
+
+## 深色模式规范
+
+- **背景色**：使用深灰色而非纯黑色，减少视觉疲劳
+- **文本色**：使用浅灰色而非纯白色，提高可读性
+- **强调色**：保持与浅色模式一致的品牌色彩
+- **图标**：使用适合深色背景的图标样式
+- **对比度**：确保文本与背景的对比度符合无障碍标准
+- **系统集成**：跟随系统深色模式设置，支持手动切换
+

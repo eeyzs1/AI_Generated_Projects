@@ -335,7 +335,7 @@ ScrollbarTheme(
 ```dart
 // lib/core/di/database_init.dart
 Future<void> initDatabase() async {
-  if (Platform.isWindows || Platform.isLinux) {
+  if (Platform.isWindows) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }

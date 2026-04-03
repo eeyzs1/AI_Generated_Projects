@@ -43,7 +43,7 @@ class PlayListItem extends StatelessWidget {
         children: [
           if (isPlaying)
             Icon(
-              Icons.playing_circle_outlined,
+              Icons.play_circle_outline,
               color: Theme.of(context).primaryColor,
             ),
           IconButton(

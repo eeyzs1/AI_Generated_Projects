@@ -52,13 +52,9 @@ const Map<String, String> enUS = {
   // 图片查看器
   'imageViewer': 'Image Viewer',
   'imageInfo': 'Image Info',
-  'dimensions': 'Dimensions',
-  'size': 'Size',
-  'modifiedTime': 'Modified Time',
 
   // 文件浏览器
   'fileBrowser': 'File Browser',
-  'addBookmark': 'Add Bookmark',
   'showHiddenFiles': 'Show Hidden Files',
   'defaultDirectory': 'Default Directory',
   'auto': 'Auto',
@@ -71,4 +67,47 @@ const Map<String, String> enUS = {
   // 功能选择
   'playVideo': 'Play Video',
   'viewImage': 'View Image',
+  
+  // 播放列表
+  'playList': 'Playlist',
+  'playListEmpty': 'Playlist is empty',
+  'previous': 'Previous',
+  'next': 'Next',
+  'clear': 'Clear',
+  
+  // 文件浏览器
+  'openFile': 'Open File',
+  'noRecentFiles': 'No recent files',
+  
+  // 历史记录对话框
+  'clearHistory': 'Clear History',
+  'sureToClearHistory': 'Are you sure you want to clear all playback history? This action cannot be undone.',
+  'historyCleared': 'History cleared',
+  'deleted': 'Deleted',
+  
+  // 功能卡片描述
+  'playVideoDesc': 'Select and play local video files',
+  'viewImageDesc': 'Select and view local image files',
+  
+  // 书签页面
+  'imageBookmarks': 'Image Bookmarks',
+  'videoBookmarks': 'Video Bookmarks',
+  'bookmarksCount': 'bookmarks',
+  'clearAllBookmarks': 'Clear All Bookmarks',
+  'sureToClearAllBookmarks': 'Are you sure you want to clear all bookmarks? This action cannot be undone.',
+  'allBookmarksCleared': 'All bookmarks cleared',
+  'bookmarkDeleted': 'Bookmark deleted',
+  
+  // 图片查看器
+  'flipHorizontal': 'Flip Horizontal',
+  'flipVertical': 'Flip Vertical',
+  'fileName': 'File Name',
+  'filePath': 'Path',
+  'dimensions': 'Dimensions',
+  'pixels': 'pixels',
+  'fileSize': 'Size',
+  'format': 'Format',
+  'modifiedTime': 'Modified Time',
+  'removeBookmark': 'Remove Bookmark',
+  'bookmarkRemoved': 'Bookmark removed',
 };

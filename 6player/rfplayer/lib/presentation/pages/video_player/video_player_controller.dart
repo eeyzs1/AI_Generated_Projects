@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../../../data/models/play_history.dart' as ph;
 import '../../../presentation/providers/database_provider.dart';
 import '../../../presentation/providers/play_queue_provider.dart';
+import '../../../presentation/providers/thumbnail_provider.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:path/path.dart' as p;
@@ -47,6 +48,11 @@ class MyVideoPlayerController {
         playCount: 1,
       );
       await historyRepo.upsert(history);
+      
+      // 异步生成缩略图
+      if (_ref != null) {
+        _generateThumbnailAsync();
+      }
     } else {
       final extension = p.extension(path).substring(1).toLowerCase();
       final updatedHistory = ph.PlayHistory(
@@ -59,8 +65,14 @@ class MyVideoPlayerController {
         totalDuration: duration != Duration.zero ? duration : history.totalDuration,
         lastPlayedAt: DateTime.now(),
         playCount: history.playCount + 1,
+        thumbnailPath: history.thumbnailPath,
       );
       await historyRepo.upsert(updatedHistory);
+      
+      // 如果没有缩略图，异步生成
+      if (_ref != null && history.thumbnailPath == null) {
+        _generateThumbnailAsync();
+      }
 
       if (updatedHistory.lastPosition != null && updatedHistory.lastPosition!.inMilliseconds > 0) {
         await videoController.seekTo(updatedHistory.lastPosition!);
@@ -259,6 +271,39 @@ class MyVideoPlayerController {
       print('Loading subtitle: $subtitlePath');
     } catch (e) {
       print('Error loading subtitle: $e');
+    }
+  }
+
+  // 异步生成缩略图
+  Future<void> _generateThumbnailAsync() async {
+    if (_disposed || _ref == null) return;
+    
+    try {
+      final thumbnailService = _ref!.read(thumbnailServiceProvider);
+      final historyRepo = _ref!.read(historyRepositoryProvider);
+      
+      final thumbPath = await thumbnailService.generateThumbnail(path);
+      
+      if (thumbPath != null && !_disposed && _ref != null) {
+        var history = await historyRepo.getByPath(path);
+        if (history != null) {
+          final updatedHistory = ph.PlayHistory(
+            id: history.id,
+            path: history.path,
+            displayName: history.displayName,
+            extension: history.extension,
+            type: history.type,
+            lastPosition: history.lastPosition,
+            totalDuration: history.totalDuration,
+            lastPlayedAt: history.lastPlayedAt,
+            playCount: history.playCount,
+            thumbnailPath: thumbPath,
+          );
+          await historyRepo.upsert(updatedHistory);
+        }
+      }
+    } catch (e) {
+      debugPrint('生成缩略图失败: $e');
     }
   }
 

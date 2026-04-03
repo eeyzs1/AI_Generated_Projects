@@ -54,6 +54,12 @@ class PlayerService {
     }
   }
   
+  void seek(Duration position) {
+    if (_controller != null && _isInitialized) {
+      _controller!.seek(position);
+    }
+  }
+  
   void dispose() {
     if (_controller != null) {
       _controller!.dispose();

@@ -31,6 +31,11 @@ class FluentShell extends StatelessWidget {
             body: child,
           ),
           PaneItem(
+            icon: const Icon(FluentIcons.bookmarks),
+            title: Text('书签'),
+            body: child,
+          ),
+          PaneItem(
             icon: const Icon(FluentIcons.settings),
             title: Text(localizations.settings),
             body: child,
@@ -47,7 +52,8 @@ class FluentShell extends StatelessWidget {
     if (location.startsWith('/home')) return 0;
     if (location.startsWith('/history')) return 1;
     if (location.startsWith('/files')) return 2;
-    if (location.startsWith('/settings')) return 3;
+    if (location.startsWith('/bookmark')) return 3;
+    if (location.startsWith('/settings')) return 4;
     return 0;
   }
 
@@ -63,6 +69,9 @@ class FluentShell extends StatelessWidget {
         GoRouter.of(context).go('/files');
         break;
       case 3:
+        GoRouter.of(context).go('/bookmark');
+        break;
+      case 4:
         GoRouter.of(context).go('/settings');
         break;
     }
