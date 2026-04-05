@@ -1,0 +1,14 @@
+[package]
+name = "flat"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "flat"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+rayon = "1.10.0"
+num_cpus = "1.16.0"
+core = { path = "../core" }
