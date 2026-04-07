@@ -1,0 +1,14 @@
+[package]
+name = "flat-ip"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+vectordb-core = { path = "../vectordb-core" }
+rayon = "1.9"
+num_cpus = "1.16"
+
+[lib]
+name = "flat_ip"
+crate-type = ["cdylib"]

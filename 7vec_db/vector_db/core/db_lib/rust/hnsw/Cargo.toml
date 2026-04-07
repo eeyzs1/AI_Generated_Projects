@@ -1,0 +1,14 @@
+[package]
+name = "hnsw"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+core = { path = "../core" }
+rand = "0.8"
+ordered-float = "4.2"
+
+[lib]
+name = "hnsw"
+crate-type = ["cdylib"]
