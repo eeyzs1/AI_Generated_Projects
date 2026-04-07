@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'en_US.dart';
-import 'zh_CN.dart';
+import 'en_us.dart';
+import 'zh_cn.dart';
 
 class AppLocalizations {
   final Locale locale;
@@ -71,6 +71,18 @@ class AppLocalizations {
   String get playbackSpeed => localizedStrings['playbackSpeed']!;
   String get volume => localizedStrings['volume']!;
   String get fullscreen => localizedStrings['fullscreen']!;
+  String get selectSubtitleFile => localizedStrings['selectSubtitleFile']!;
+  String get subtitleAdded => localizedStrings['subtitleAdded']!;
+  String get addSubtitleFailed => localizedStrings['addSubtitleFailed']!;
+  String get subtitleSettings => localizedStrings['subtitleSettings']!;
+  String get selectSubtitle => localizedStrings['selectSubtitle']!;
+  String get externalSubtitle => localizedStrings['externalSubtitle']!;
+  String get embeddedSubtitle => localizedStrings['embeddedSubtitle']!;
+  String get turnOnSubtitle => localizedStrings['turnOnSubtitle']!;
+  String get turnOffSubtitle => localizedStrings['turnOffSubtitle']!;
+  String get deleteSubtitleFile => localizedStrings['deleteSubtitleFile']!;
+  String get deleteAllSubtitleFiles => localizedStrings['deleteAllSubtitleFiles']!;
+  String get hideSubtitle => localizedStrings['hideSubtitle']!;
 
   // 图片查看器
   String get imageViewer => localizedStrings['imageViewer']!;

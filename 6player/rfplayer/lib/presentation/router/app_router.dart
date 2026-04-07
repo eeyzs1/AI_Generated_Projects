@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:go_router/go_router.dart';
 import '../shell/main_shell.dart';
 import '../pages/home/home_page.dart';
@@ -26,16 +27,36 @@ final appRouter = GoRouter(
       builder: (_, state) {
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
-          // 从书签页面传递过来的数据
-          final path = extra['path'] as String;
-          final position = extra['position'] as Duration?;
-          return VideoPlayerPage(path: path, initialPosition: position);
+          if (extra.containsKey('position')) {
+            // 从书签页面传递过来的数据
+            final path = extra['path'] as String;
+            final position = extra['position'] as Duration?;
+            return VideoPlayerPage(path: path, initialPosition: position);
+          } else {
+            // 从文件选择器传递过来的数据（包含 path 和 name）
+            final path = extra['path'] as String;
+            final name = extra['name'] as String?;
+            return VideoPlayerPage(path: path, fileName: name);
+          }
         } else {
           // 从其他页面传递过来的数据（直接传递路径字符串）
           return VideoPlayerPage(path: extra as String);
         }
       },
     ),
-    GoRoute(path: '/image-viewer', builder: (_, state) => ImageViewerPage(path: state.extra as String)),
+    GoRoute(
+      path: '/image-viewer',
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          final path = extra['path'] as String;
+          final name = extra['name'] as String?;
+          final bytes = extra['bytes'] as Uint8List?;
+          return ImageViewerPage(path: path, fileName: name, bytes: bytes);
+        } else {
+          return ImageViewerPage(path: extra as String);
+        }
+      },
+    ),
   ],
 );

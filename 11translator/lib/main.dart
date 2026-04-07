@@ -9,6 +9,7 @@ import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/core/utils/platform_utils.dart';
 import 'package:rfdictionary/features/favorites/data/models/favorite_word.dart';
 import 'package:rfdictionary/features/history/data/models/history_entry.dart';
+import 'package:rfdictionary/features/translation/data/models/translation_history.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +22,10 @@ Future<void> main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(FavoriteWordAdapter());
   Hive.registerAdapter(HistoryEntryAdapter());
+  Hive.registerAdapter(TranslationHistoryAdapter());
   await Hive.openBox<FavoriteWord>('favorites');
   await Hive.openBox<HistoryEntry>('history');
+  await Hive.openBox<TranslationHistory>('translation_history');
 
   final prefs = await SharedPreferences.getInstance();
 

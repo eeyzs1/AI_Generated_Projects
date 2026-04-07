@@ -9,6 +9,10 @@ class TranslationResult {
   final DateTime translatedAt;
   final TranslationSource source;
   final String? dictionaryExplanation;
+  final String? phonetic;
+  final List<String>? definitions;
+  final List<String>? examples;
+  final bool isWordOrPhrase;
 
   TranslationResult({
     required this.sourceText,
@@ -18,6 +22,10 @@ class TranslationResult {
     required this.translatedAt,
     required this.source,
     this.dictionaryExplanation,
+    this.phonetic,
+    this.definitions,
+    this.examples,
+    this.isWordOrPhrase = false,
   });
 
   TranslationResult copyWith({
@@ -28,6 +36,10 @@ class TranslationResult {
     DateTime? translatedAt,
     TranslationSource? source,
     String? dictionaryExplanation,
+    String? phonetic,
+    List<String>? definitions,
+    List<String>? examples,
+    bool? isWordOrPhrase,
   }) {
     return TranslationResult(
       sourceText: sourceText ?? this.sourceText,
@@ -37,6 +49,10 @@ class TranslationResult {
       translatedAt: translatedAt ?? this.translatedAt,
       source: source ?? this.source,
       dictionaryExplanation: dictionaryExplanation ?? this.dictionaryExplanation,
+      phonetic: phonetic ?? this.phonetic,
+      definitions: definitions ?? this.definitions,
+      examples: examples ?? this.examples,
+      isWordOrPhrase: isWordOrPhrase ?? this.isWordOrPhrase,
     );
   }
 }

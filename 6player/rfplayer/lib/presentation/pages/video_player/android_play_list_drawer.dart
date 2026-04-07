@@ -31,7 +31,7 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             spreadRadius: 5,
             blurRadius: 10,
           ),

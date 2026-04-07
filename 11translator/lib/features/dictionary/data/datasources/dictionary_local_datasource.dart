@@ -8,9 +8,15 @@ import 'package:rfdictionary/features/dictionary/domain/entities/word_entry.dart
 
 class DictionaryLocalDataSource {
   Database? _db;
-  static const String _dbName = 'stardict.db';
+  static const String _defaultDbName = 'stardict.db';
   static const int _cacheSizeDesktop = 32768; // KB
   static const int _cacheSizeMobile = 4096;   // KB
+  String? _customDbPath;
+
+  void setCustomPath(String? path) {
+    _customDbPath = path;
+    _db = null;
+  }
 
   Future<Database> get db async {
     _db ??= await _openDatabase();
@@ -19,7 +25,7 @@ class DictionaryLocalDataSource {
 
   static Stream<double> initDatabaseIfNeeded() async* {
     final dir = await getApplicationDocumentsDirectory();
-    final dbPath = path.join(dir.path, _dbName);
+    final dbPath = path.join(dir.path, _defaultDbName);
 
     if (File(dbPath).existsSync()) {
       try {
@@ -39,7 +45,7 @@ class DictionaryLocalDataSource {
     // 检查 assets 中是否有数据库文件
     try {
       yield 0.0;
-      final data = await rootBundle.load('assets/$_dbName');
+      final data = await rootBundle.load('assets/$_defaultDbName');
       final bytes = data.buffer.asUint8List();
       final total = bytes.length;
       const chunkSize = 65536; // 64KB chunks for better progress reporting
@@ -64,8 +70,14 @@ class DictionaryLocalDataSource {
   }
 
   Future<Database> _openDatabase() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final dbPath = path.join(dir.path, _dbName);
+    String dbPath;
+    
+    if (_customDbPath != null && File(_customDbPath!).existsSync()) {
+      dbPath = _customDbPath!;
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      dbPath = path.join(dir.path, _defaultDbName);
+    }
     
     // 检查数据库文件是否存在
     if (!File(dbPath).existsSync()) {

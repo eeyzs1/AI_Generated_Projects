@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../providers/video_bookmark_provider.dart';
 import '../../providers/image_bookmark_provider.dart';
 import '../../../data/models/video_bookmark.dart';
-import '../../../data/models/image_bookmark.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/localization/app_localizations.dart';
 
@@ -77,7 +76,7 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
                           _openImage(bookmark.imagePath);
                         },
                       );
-                    }).toList(),
+                    }),
                   ],
                   if (videoBookmarks.isNotEmpty) ...[
                     if (imageBookmarks.isNotEmpty) const SizedBox(height: 16),
@@ -110,7 +109,6 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
     }
 
     return groupedBookmarks.entries.map((entry) {
-      final videoPath = entry.key;
       final bookmarks = entry.value;
       final videoName = bookmarks.first.videoName;
 
@@ -158,6 +156,7 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
           ),
           TextButton(
             onPressed: () async {
+              Navigator.pop(context);
               final videoBookmarks = ref.read(videoBookmarkProvider);
               for (final bookmark in videoBookmarks) {
                 await ref.read(videoBookmarkProvider.notifier).deleteBookmark(bookmark.id);
@@ -167,11 +166,8 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
                 await ref.read(imageBookmarkProvider.notifier).deleteBookmark(bookmark.id);
               }
               if (mounted) {
-                Navigator.pop(context);
-                ToastUtils.showToast(
-                  context,
-                  loc.allBookmarksCleared,
-                );
+                // ignore: use_build_context_synchronously
+                ToastUtils.showToast(context, loc.allBookmarksCleared);
               }
             },
             child: Text(loc.clearAll),

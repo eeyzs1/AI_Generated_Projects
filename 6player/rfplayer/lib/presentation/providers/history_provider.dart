@@ -35,4 +35,8 @@ class HistoryActions {
   Future<void> upsertHistory(PlayHistory history) async {
     await _repository.upsert(history);
   }
+
+  Future<void> cleanupInvalidRecords() async {
+    await _repository.cleanupInvalidRecords();
+  }
 }

@@ -48,6 +48,9 @@ dependencies:
 
   # 文件选择
   file_picker: ^8.0.0+1
+  
+  # 压缩文件处理
+  archive: ^3.6.1
 
   # LLM 本地推理（使用命令行 llama.cpp）
 

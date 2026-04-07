@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:fast_file_picker/fast_file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import '../../../router/app_router.dart';
+import '../../../../core/constants/supported_formats.dart';
 
 class FeatureCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String description;
-  final FileType fileType;
   final String route;
+  final List<String> allowedExtensions;
 
   const FeatureCard({
     super.key,
     required this.icon,
     required this.title,
     required this.description,
-    required this.fileType,
     required this.route,
+    required this.allowedExtensions,
   });
 
   @override
@@ -27,14 +29,28 @@ class FeatureCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () async {
-          final result = await FilePicker.platform.pickFiles(
-            type: fileType,
-            allowMultiple: false,
+          final typeGroup = XTypeGroup(
+            label: 'Allowed Files',
+            extensions: allowedExtensions,
+          );
+          final result = await FastFilePicker.pickFile(
+            acceptedTypeGroups: [typeGroup],
           );
 
-          if (result != null && result.files.isNotEmpty) {
-            final path = result.files.first.path!;
-            appRouter.push(route, extra: path);
+          if (result != null) {
+            String? pathToUse;
+            if (result.path != null) {
+              pathToUse = result.path;
+            } else if (result.uri != null) {
+              pathToUse = result.uri.toString();
+            }
+            
+            if (pathToUse != null) {
+              appRouter.push(route, extra: {
+                'path': pathToUse,
+                'name': result.name,
+              });
+            }
           }
         },
         child: Padding(
@@ -57,7 +73,7 @@ class FeatureCard extends StatelessWidget {
               Text(
                 description,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                      color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
                     ),
                 textAlign: TextAlign.center,
               ),

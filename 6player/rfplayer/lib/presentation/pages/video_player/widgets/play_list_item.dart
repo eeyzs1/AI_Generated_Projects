@@ -29,8 +29,8 @@ class PlayListItem extends StatelessWidget {
     
     return Container(
       decoration: BoxDecoration(
-        color: isCurrentPlaying ? Colors.blue.withOpacity(0.2) : Colors.transparent,
-        border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        color: isCurrentPlaying ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
+        border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
       ),
       child: ListTile(
         leading: Container(
@@ -38,7 +38,7 @@ class PlayListItem extends StatelessWidget {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isCurrentPlaying ? Colors.blue : Colors.grey.withOpacity(0.2),
+            color: isCurrentPlaying ? Colors.blue : Colors.grey.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(4),
           ),
           child: isCurrentPlaying

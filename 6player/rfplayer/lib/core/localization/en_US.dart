@@ -48,6 +48,18 @@ const Map<String, String> enUS = {
   'playbackSpeed': 'Playback Speed',
   'volume': 'Volume',
   'fullscreen': 'Fullscreen',
+  'selectSubtitleFile': 'Select Subtitle File',
+  'subtitleAdded': 'Subtitle Added',
+  'addSubtitleFailed': 'Failed to Add Subtitle',
+  'subtitleSettings': 'Subtitle Settings',
+  'selectSubtitle': 'Select Subtitle',
+  'externalSubtitle': 'External Subtitle',
+  'embeddedSubtitle': 'Embedded Subtitle',
+  'turnOnSubtitle': 'Turn On Subtitle',
+  'turnOffSubtitle': 'Turn Off Subtitle',
+  'deleteSubtitleFile': 'Delete Subtitle File',
+  'deleteAllSubtitleFiles': 'Delete All Subtitle Files',
+  'hideSubtitle': 'Hide Subtitle',
 
   // 图片查看器
   'imageViewer': 'Image Viewer',

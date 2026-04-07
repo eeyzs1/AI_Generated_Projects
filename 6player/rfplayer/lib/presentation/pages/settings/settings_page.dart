@@ -128,8 +128,6 @@ class SettingsPage extends ConsumerWidget {
         return localizations.light;
       case app_settings.ThemeMode.dark:
         return localizations.dark;
-      default:
-        return '未知';
     }
   }
 
@@ -174,12 +172,10 @@ class SettingsPage extends ConsumerWidget {
     switch (language) {
       case app_settings.AppLanguage.system:
         return localizations.systemLanguage;
-      case app_settings.AppLanguage.zh_CN:
+      case app_settings.AppLanguage.zhCn:
         return localizations.chinese;
-      case app_settings.AppLanguage.en_US:
+      case app_settings.AppLanguage.enUs:
         return localizations.english;
-      default:
-        return '未知';
     }
   }
 
@@ -240,8 +236,6 @@ class SettingsPage extends ConsumerWidget {
         return localizations.fluent;
       case app_settings.UIStyle.adaptive:
         return localizations.adaptive;
-      default:
-        return '未知';
     }
   }
 }

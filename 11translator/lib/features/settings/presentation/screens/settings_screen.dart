@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/core/utils/platform_utils.dart';
 import 'package:rfdictionary/features/llm/presentation/screens/model_download_screen.dart';
+import 'package:rfdictionary/features/llm/domain/model_manager.dart';
+import 'package:rfdictionary/features/dictionary/presentation/screens/dictionary_manager_screen.dart';
+import 'package:rfdictionary/features/dictionary/domain/dictionary_manager.dart';
 
 const List<Color> _presetColors = [
   Color(0xFFE8002D),
@@ -112,21 +115,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
           ),
           const Divider(),
+          _SectionHeader(l10n.dictionarySettings),
+          Consumer(
+            builder: (context, ref, child) {
+              final manager = ref.read(dictionaryManagerProvider.notifier);
+              return FutureBuilder<bool>(
+                future: manager.isDictionaryAvailable(),
+                builder: (context, snapshot) {
+                  final isAvailable = snapshot.data ?? false;
+                  return ListTile(
+                    title: Text(l10n.dictionaryManagement),
+                    subtitle: Text(isAvailable ? l10n.dictionaryReady : l10n.pleaseSelectDictionary),
+                    trailing: FilledButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const DictionaryManagerScreen(),
+                          ),
+                        );
+                      },
+                      child: Text(l10n.manage),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          const Divider(),
           _SectionHeader(l10n.aiFeatures),
-          ListTile(
-            title: Text(l10n.aiModel),
-            subtitle: Text(l10n.notInstalled),
-            trailing: FilledButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ModelDownloadScreen(),
-                  ),
-                );
-              },
-              child: Text(l10n.download),
-            ),
+          Consumer(
+            builder: (context, ref, child) {
+              final manager = ref.read(modelManagerProvider.notifier);
+              return FutureBuilder<bool>(
+                future: manager.isAnyModelDownloaded(),
+                builder: (context, snapshot) {
+                  final isAvailable = snapshot.data ?? false;
+                  return ListTile(
+                    title: Text(l10n.aiModel),
+                    subtitle: Text(isAvailable ? 'Please select model' : l10n.notInstalled),
+                    trailing: FilledButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ModelDownloadScreen(),
+                          ),
+                        );
+                      },
+                      child: Text(l10n.manage),
+                    ),
+                  );
+                },
+              );
+            },
           ),
           const Divider(),
           _SectionHeader(l10n.dataManagement),

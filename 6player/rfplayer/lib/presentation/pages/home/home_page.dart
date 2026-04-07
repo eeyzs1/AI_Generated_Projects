@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../home/widgets/feature_card.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/constants/supported_formats.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -31,15 +31,15 @@ class HomePage extends ConsumerWidget {
                   icon: Icons.video_library,
                   title: loc.playVideo,
                   description: loc.playVideoDesc,
-                  fileType: FileType.video,
                   route: '/video-player',
+                  allowedExtensions: videoFormats,
                 ),
                 FeatureCard(
                   icon: Icons.photo_library,
                   title: loc.viewImage,
                   description: loc.viewImageDesc,
-                  fileType: FileType.image,
                   route: '/image-viewer',
+                  allowedExtensions: imageFormats,
                 ),
               ]),
             ),

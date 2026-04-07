@@ -1,34 +1,38 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:extended_image/extended_image.dart';
 import 'package:path/path.dart' as p;
 import '../../providers/image_viewer_provider.dart';
 import '../../providers/image_bookmark_provider.dart';
-import '../../providers/history_provider.dart';
 import '../../providers/thumbnail_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../../data/models/play_history.dart' as ph;
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/utils/content_uri_utils.dart';
 
 class ImageViewerPage extends ConsumerStatefulWidget {
   final String path;
+  final String? fileName;
+  final Uint8List? bytes;
 
-  const ImageViewerPage({super.key, required this.path});
+  const ImageViewerPage({super.key, required this.path, this.fileName, this.bytes});
 
   @override
   ConsumerState<ImageViewerPage> createState() => _ImageViewerPageState();
 }
 
 class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
-  final GlobalKey<ExtendedImageGestureState> _gestureKey = GlobalKey<ExtendedImageGestureState>();
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   
   @override
   void initState() {
     super.initState();
+    debugPrint('[ImageViewerPage] ======== 图片查看器初始化 ========');
+    debugPrint('[ImageViewerPage] path: ${widget.path}');
+    debugPrint('[ImageViewerPage] fileName: ${widget.fileName}');
+    debugPrint('[ImageViewerPage] bytes: ${widget.bytes != null ? '有数据，长度: ${widget.bytes!.length}' : '无数据'}');
     _updateHistory();
   }
   
@@ -39,13 +43,22 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
       final historyRepo = ref.read(historyRepositoryProvider);
       var history = await historyRepo.getByPath(widget.path);
       
-      final extension = p.extension(widget.path).substring(1).toLowerCase();
+      String extension;
+      if (widget.fileName != null) {
+        // 从 fileName 中提取扩展名
+        final ext = p.extension(widget.fileName!).toLowerCase();
+        extension = ext.length > 1 ? ext.substring(1) : ext;
+      } else {
+        // 从 path 中提取扩展名
+        final ext = p.extension(widget.path).toLowerCase();
+        extension = ext.length > 1 ? ext.substring(1) : ext;
+      }
       
       if (history == null) {
         history = ph.PlayHistory(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           path: widget.path,
-          displayName: p.basename(widget.path),
+          displayName: widget.fileName ?? p.basename(widget.path),
           extension: extension,
           type: ph.MediaType.image,
           lastPosition: Duration.zero,
@@ -78,7 +91,7 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         }
       }
     } catch (e) {
-      print('更新历史记录失败: $e');
+      // print('更新历史记录失败: $e');
     }
   }
   
@@ -110,15 +123,20 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         }
       }
     } catch (e) {
-      print('生成缩略图失败: $e');
+      // print('生成缩略图失败: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    final state = ref.watch(imageViewerProvider(widget.path));
-    final notifier = ref.read(imageViewerProvider(widget.path).notifier);
+    final params = ImageViewerParams(
+      path: widget.path,
+      customFileName: widget.fileName,
+      initialBytes: widget.bytes,
+    );
+    final state = ref.watch(imageViewerProvider(params));
+    final notifier = ref.read(imageViewerProvider(params).notifier);
 
     return ScaffoldMessenger(
       key: _scaffoldMessengerKey,
@@ -129,7 +147,7 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
             // 顶部工具栏
             if (state.isUIVisible)
               Container(
-                color: Colors.black.withOpacity(0.7),
+                color: Colors.black.withValues(alpha: 0.7),
                 child: SafeArea(
                   child: AppBar(
                     backgroundColor: Colors.transparent,
@@ -157,10 +175,14 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
                                 state.currentPath,
                                 state.currentFileName,
                               );
-                              if (isBookmarked) {
-                                ToastUtils.showToast(context, '${loc.bookmarkRemoved}: ${state.currentFileName}');
-                              } else {
-                                ToastUtils.showToast(context, '${loc.bookmarkAdded}: ${state.currentFileName}');
+                              if (mounted) {
+                                if (isBookmarked) {
+                                  // ignore: use_build_context_synchronously
+                                  ToastUtils.showToast(context, '${loc.bookmarkRemoved}: ${state.currentFileName}');
+                                } else {
+                                  // ignore: use_build_context_synchronously
+                                  ToastUtils.showToast(context, '${loc.bookmarkAdded}: ${state.currentFileName}');
+                                }
                               }
                             },
                           );
@@ -169,10 +191,6 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
                       IconButton(
                         icon: const Icon(Icons.info_outline, color: Colors.white),
                         onPressed: () => _showImageInfo(context, state),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.more_vert, color: Colors.white),
-                        onPressed: () => _showMoreMenu(context, state, notifier),
                       ),
                     ],
                   ),
@@ -191,17 +209,14 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
                         onTap: () => notifier.toggleUIVisibility(),
                         child: Transform(
                           transform: Matrix4.identity()
-                            ..scale(state.currentScale)
+                            // ignore: deprecated_member_use
+                            ..scale(state.currentScale, state.currentScale, 1.0)
                             ..rotateZ(state.rotation * 3.14159 / 180),
                           alignment: Alignment.center,
                           child: Transform.flip(
                             flipX: state.isFlippedHorizontal,
                             flipY: state.isFlippedVertical,
-                            child: Image.file(
-                              File(state.currentPath),
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                            ),
+                            child: _buildImageWidget(state),
                           ),
                         ),
                       ),
@@ -244,7 +259,7 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
             // 底部工具栏
             if (state.isUIVisible)
               Container(
-                color: Colors.black.withOpacity(0.7),
+                color: Colors.black.withValues(alpha: 0.7),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: SafeArea(
                   top: false,
@@ -289,37 +304,6 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
     );
   }
 
-  void _showFlipMenu(BuildContext context, ImageViewerNotifier notifier) {
-    final loc = AppLocalizations.of(context)!;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.flip, color: Colors.white),
-              title: Text(loc.flipHorizontal, style: const TextStyle(color: Colors.white)),
-              onTap: () {
-                notifier.flipHorizontal();
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.flip_to_back, color: Colors.white),
-              title: Text(loc.flipVertical, style: const TextStyle(color: Colors.white)),
-              onTap: () {
-                notifier.flipVertical();
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showImageInfo(BuildContext context, ImageViewerState state) {
     final loc = AppLocalizations.of(context)!;
     final info = state.imageInfo;
@@ -353,49 +337,6 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
     );
   }
 
-  void _showMoreMenu(BuildContext context, ImageViewerState state, ImageViewerNotifier notifier) {
-    final loc = AppLocalizations.of(context)!;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Consumer(
-              builder: (context, ref, child) {
-                final bookmarks = ref.watch(imageBookmarkProvider);
-                final isBookmarked = bookmarks.any((b) => b.imagePath == state.currentPath);
-                return ListTile(
-                  leading: Icon(
-                    isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                    color: Colors.white,
-                  ),
-                  title: Text(
-                    isBookmarked ? loc.removeBookmark : loc.addBookmark,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await ref.read(imageBookmarkProvider.notifier).toggleBookmark(
-                      state.currentPath,
-                      state.currentFileName,
-                    );
-                    if (isBookmarked) {
-                      ToastUtils.showToast(context, '${loc.bookmarkRemoved}: ${state.currentFileName}');
-                    } else {
-                      ToastUtils.showToast(context, '${loc.bookmarkAdded}: ${state.currentFileName}');
-                    }
-                  },
-                );
-              },
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -406,5 +347,129 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String? _tryExtractRealPathFromContentUri(String contentUri) {
+    debugPrint('[ImageViewerPage] 尝试从 content URI 提取真实路径: $contentUri');
+    
+    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
+    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
+    if (contentUri.contains('/document/')) {
+      final parts = contentUri.split('/document/');
+      if (parts.length == 2) {
+        final encodedPath = parts[1];
+        debugPrint('[ImageViewerPage] 找到编码部分: $encodedPath');
+        
+        // 检查常见的前缀并移除
+        String pathToDecode = encodedPath;
+        if (pathToDecode.startsWith('raw%3A')) {
+          pathToDecode = pathToDecode.substring(6);
+          debugPrint('[ImageViewerPage] 移除 raw: 前缀');
+        } else if (pathToDecode.startsWith('msf%3A')) {
+          debugPrint('[ImageViewerPage] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
+          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
+          return null;
+        }
+        
+        // URL 解码
+        try {
+          final decodedPath = Uri.decodeComponent(pathToDecode);
+          debugPrint('[ImageViewerPage] URL 解码后: $decodedPath');
+          
+          // 检查是否是一个绝对路径
+          if (decodedPath.startsWith('/')) {
+            debugPrint('[ImageViewerPage] 提取到真实路径: $decodedPath');
+            return decodedPath;
+          }
+        } catch (e) {
+          debugPrint('[ImageViewerPage] URL 解码失败: $e');
+        }
+      }
+    }
+    
+    debugPrint('[ImageViewerPage] 无法从 content URI 提取真实路径');
+    return null;
+  }
+
+  Widget _buildImageWidget(ImageViewerState state) {
+    debugPrint('[ImageViewerPage] ======== 构建图片组件 ========');
+    debugPrint('[ImageViewerPage] state.currentPath: ${state.currentPath}');
+    debugPrint('[ImageViewerPage] widget.bytes: ${widget.bytes != null ? '有数据' : '无数据'}');
+    debugPrint('[ImageViewerPage] state.imageInfo: ${state.imageInfo != null ? '存在' : '不存在'}');
+    debugPrint('[ImageViewerPage] state.imageInfo.bytes: ${state.imageInfo?.bytes != null ? '有数据' : '无数据'}');
+    debugPrint('[ImageViewerPage] 检查是否是 content URI: ${ContentUriUtils.isContentUri(state.currentPath)}');
+    debugPrint('[ImageViewerPage] state.isLoading: ${state.isLoading}');
+    
+    // 优先使用通过 widget 传递过来的字节数据
+    if (widget.bytes != null) {
+      debugPrint('[ImageViewerPage] 使用 widget.bytes 显示图片，字节长度: ${widget.bytes!.length}');
+      return Image.memory(
+        widget.bytes!,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      );
+    }
+    
+    // 然后尝试使用 state.imageInfo.bytes
+    if (state.imageInfo != null && state.imageInfo!.bytes != null) {
+      debugPrint('[ImageViewerPage] 使用 state.imageInfo.bytes 显示图片，字节长度: ${state.imageInfo!.bytes!.length}');
+      return Image.memory(
+        state.imageInfo!.bytes!,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      );
+    }
+    
+    // 如果是加载中状态，显示加载指示器
+    if (state.isLoading) {
+      debugPrint('[ImageViewerPage] 正在加载，显示加载指示器');
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    
+    // 如果是 content URI，先尝试提取真实路径
+    String effectivePath = state.currentPath;
+    bool isContentUri = ContentUriUtils.isContentUri(state.currentPath);
+    
+    if (isContentUri) {
+      final realPath = _tryExtractRealPathFromContentUri(state.currentPath);
+      if (realPath != null) {
+        final realFile = File(realPath);
+        if (realFile.existsSync()) {
+          debugPrint('[ImageViewerPage] 真实路径文件存在，使用真实路径显示');
+          effectivePath = realPath;
+          isContentUri = false;
+        }
+      }
+    }
+    
+    // 如果没有字节数据，对于 content URI 显示错误提示
+    if (isContentUri) {
+      debugPrint('[ImageViewerPage] 是 content URI，但没有字节数据，显示错误提示');
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 64),
+            const SizedBox(height: 16),
+            Text(
+              '无法访问此文件',
+              style: const TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请从文件浏览器重新选择此文件',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    } else {
+      debugPrint('[ImageViewerPage] 使用 Image.file 显示普通文件，路径: $effectivePath');
+      return Image.file(
+        File(effectivePath),
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      );
+    }
   }
 }

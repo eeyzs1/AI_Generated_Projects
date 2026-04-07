@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rfdictionary/features/llm/domain/model_manager.dart';
+import 'package:rfdictionary/features/dictionary/domain/dictionary_manager.dart';
 import 'package:rfdictionary/presentation/shell/main_shell.dart';
 
 class InitScreen extends ConsumerStatefulWidget {
@@ -28,7 +29,15 @@ class _InitScreenState extends ConsumerState<InitScreen> {
       });
       
       // 加载选中的模型
-      await ref.read(modelManagerProvider.notifier).loadSelectedModel();
+      await ref.read(modelManagerProvider.notifier).loadSavedModel();
+      
+      setState(() {
+        _status = '正在加载词典管理器...';
+        _progress = 0.6;
+      });
+      
+      // 加载保存的词典设置
+      await ref.read(dictionaryManagerProvider.notifier).loadSavedDictionary();
       
       setState(() {
         _status = '初始化完成！';

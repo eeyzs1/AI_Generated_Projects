@@ -48,6 +48,18 @@ const Map<String, String> zhCN = {
   'playbackSpeed': '播放速度',
   'volume': '音量',
   'fullscreen': '全屏',
+  'selectSubtitleFile': '选择字幕文件',
+  'subtitleAdded': '字幕已添加',
+  'addSubtitleFailed': '添加字幕失败',
+  'subtitleSettings': '字幕设置',
+  'selectSubtitle': '选择字幕',
+  'externalSubtitle': '外部字幕',
+  'embeddedSubtitle': '内嵌字幕',
+  'turnOnSubtitle': '开启字幕',
+  'turnOffSubtitle': '关闭字幕',
+  'deleteSubtitleFile': '删除字幕文件',
+  'deleteAllSubtitleFiles': '删除所有字幕文件',
+  'hideSubtitle': '不显示字幕',
 
   // 图片查看器
   'imageViewer': '图片查看器',

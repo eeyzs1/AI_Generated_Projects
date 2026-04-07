@@ -1,12 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/extensions/duration_extensions.dart';
 import '../../../../data/models/play_history.dart';
-import '../../../router/app_router.dart';
 import '../../../providers/history_provider.dart';
 import '../../../providers/thumbnail_provider.dart';
-import '../../../providers/database_provider.dart';
+import '../../../router/app_router.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../../../core/localization/app_localizations.dart';
 
@@ -18,7 +16,12 @@ class HistoryListItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isVideo = history.type == MediaType.video;
-    final isFileExists = File(history.path).existsSync();
+    bool isFileExists;
+    if (history.path.startsWith('content://')) {
+      isFileExists = true;
+    } else {
+      isFileExists = File(history.path).existsSync();
+    }
 
     return ListTile(
       leading: _buildThumbnail(context, ref),
@@ -68,9 +71,15 @@ class HistoryListItem extends ConsumerWidget {
       onTap: () {
         if (isFileExists) {
           if (isVideo) {
-            appRouter.push('/video-player', extra: history.path);
+            appRouter.push('/video-player', extra: {
+              'path': history.path,
+              'name': history.displayName,
+            });
           } else {
-            appRouter.push('/image-viewer', extra: history.path);
+            appRouter.push('/image-viewer', extra: {
+              'path': history.path,
+              'name': history.displayName,
+            });
           }
         }
       },
@@ -79,11 +88,14 @@ class HistoryListItem extends ConsumerWidget {
 
   Widget _buildThumbnail(BuildContext context, WidgetRef ref) {
     final isVideo = history.type == MediaType.video;
-    final isFileExists = File(history.path).existsSync();
     
     return Consumer(
       builder: (context, ref, child) {
-        final thumbnailAsync = ref.watch(thumbnailGeneratorProvider(history.path));
+        final thumbnailAsync = ref.watch(thumbnailGeneratorProvider((
+          filePath: history.path,
+          displayName: history.displayName,
+          type: history.type,
+        )));
         
         return thumbnailAsync.when(
           data: (thumbPath) {

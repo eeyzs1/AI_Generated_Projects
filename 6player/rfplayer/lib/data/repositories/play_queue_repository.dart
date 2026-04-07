@@ -16,7 +16,13 @@ class PlayQueueRepository {
     
     for (final item in items) {
       // 实时检查文件是否存在
-      final isInvalid = !File(item.path).existsSync();
+      bool isInvalid;
+      if (item.path.startsWith('content://')) {
+        // URI 不检查存在性（暂时假设有效）
+        isInvalid = false;
+      } else {
+        isInvalid = !File(item.path).existsSync();
+      }
       if (isInvalid != item.isInvalid) {
         // 这里简化处理，直接返回带有更新状态的item
         updatedItems.add(PlayQueueItem(
@@ -39,13 +45,38 @@ class PlayQueueRepository {
   }
 
   Future<void> add(String path, String displayName) async {
-    if (!File(path).existsSync()) {
-      throw Exception('文件不存在: $path');
+    // 检查文件是否存在（对于 URI 跳过此检查）
+    if (!path.startsWith('content://')) {
+      if (!File(path).existsSync()) {
+        throw Exception('文件不存在: $path');
+      }
     }
 
     // 检查播放队列中是否已存在该视频
     final existingItems = await _playQueueDao.getAll();
-    final isAlreadyInQueue = existingItems.any((item) => item.path == path);
+    bool isAlreadyInQueue = false;
+    
+    for (final item in existingItems) {
+      if (path.startsWith('content://') && item.path.startsWith('content://')) {
+        // 都是 URI，用 displayName 判断是否是同一个文件
+        if (item.displayName == displayName) {
+          isAlreadyInQueue = true;
+          break;
+        }
+      } else if (!path.startsWith('content://') && !item.path.startsWith('content://')) {
+        // 都是文件路径，直接比较路径
+        if (item.path == path) {
+          isAlreadyInQueue = true;
+          break;
+        }
+      } else {
+        // 一个是 URI，一个是文件路径，用 displayName 判断
+        if (item.displayName == displayName) {
+          isAlreadyInQueue = true;
+          break;
+        }
+      }
+    }
     
     if (isAlreadyInQueue) {
       // 如果已在队列中，直接返回，不重复添加
@@ -98,8 +129,13 @@ class PlayQueueRepository {
     final nextData = await _playQueueDao.getNextItem(currentSortOrder);
     if (nextData == null) return null;
 
-    // 检查文件是否存在
-    final isInvalid = !File(nextData.path).existsSync();
+    // 检查文件是否存在（对于 URI 跳过此检查）
+    bool isInvalid;
+    if (nextData.path.startsWith('content://')) {
+      isInvalid = false;
+    } else {
+      isInvalid = !File(nextData.path).existsSync();
+    }
     return PlayQueueItem(
       id: nextData.id,
       path: nextData.path,
@@ -117,8 +153,13 @@ class PlayQueueRepository {
     final currentData = await _playQueueDao.getCurrentPlaying();
     if (currentData == null) return null;
 
-    // 检查文件是否存在
-    final isInvalid = !File(currentData.path).existsSync();
+    // 检查文件是否存在（对于 URI 跳过此检查）
+    bool isInvalid;
+    if (currentData.path.startsWith('content://')) {
+      isInvalid = false;
+    } else {
+      isInvalid = !File(currentData.path).existsSync();
+    }
     return PlayQueueItem(
       id: currentData.id,
       path: currentData.path,
@@ -135,8 +176,10 @@ class PlayQueueRepository {
   Future<void> cleanupInvalidRecords() async {
     final items = await _playQueueDao.getAll();
     for (final item in items) {
-      if (!File(item.path).existsSync()) {
-        await _playQueueDao.deleteById(item.id);
+      if (!item.path.startsWith('content://')) {
+        if (!File(item.path).existsSync()) {
+          await _playQueueDao.deleteById(item.id);
+        }
       }
     }
   }

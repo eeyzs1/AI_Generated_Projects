@@ -54,10 +54,10 @@ class PlayListItem extends StatelessWidget {
       ),
       onTap: onTap,
       tileColor: isPlaying
-          ? Theme.of(context).primaryColor.withOpacity(0.1)
+          ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
           : null,
       selected: isPlaying,
-      selectedTileColor: Theme.of(context).primaryColor.withOpacity(0.2),
+      selectedTileColor: Theme.of(context).primaryColor.withValues(alpha: 0.2),
     );
   }
 }

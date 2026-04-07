@@ -1,15 +1,24 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import '../constants/supported_formats.dart';
 
 class FileUtils {
   static bool isVideoFile(String path) {
-    final extension = p.extension(path).toLowerCase();
-    return ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm'].contains(extension);
+    final ext = p.extension(path).toLowerCase();
+    final extension = ext.length > 1 ? ext.substring(1) : ext;
+    return videoFormats.contains(extension);
   }
 
   static bool isImageFile(String path) {
-    final extension = p.extension(path).toLowerCase();
-    return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'].contains(extension);
+    final ext = p.extension(path).toLowerCase();
+    final extension = ext.length > 1 ? ext.substring(1) : ext;
+    return imageFormats.contains(extension);
+  }
+
+  static bool isSubtitleFile(String path) {
+    final ext = p.extension(path).toLowerCase();
+    final extension = ext.length > 1 ? ext.substring(1) : ext;
+    return subtitleFormats.contains(extension);
   }
 
   static String getFileName(String path) {
@@ -28,7 +37,8 @@ class FileUtils {
     
     if (extensions != null && extensions.isNotEmpty) {
       return files.where((file) {
-        final extension = p.extension(file.path).toLowerCase();
+        final ext = p.extension(file.path).toLowerCase();
+        final extension = ext.length > 1 ? ext.substring(1) : ext;
         return extensions.contains(extension);
       }).toList();
     }
@@ -37,11 +47,15 @@ class FileUtils {
   }
 
   static List<File> getImageFilesInDirectory(String directoryPath) {
-    return getFilesInDirectory(directoryPath, extensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff']);
+    return getFilesInDirectory(directoryPath, extensions: imageFormats);
   }
 
   static List<File> getVideoFilesInDirectory(String directoryPath) {
-    return getFilesInDirectory(directoryPath, extensions: ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm']);
+    return getFilesInDirectory(directoryPath, extensions: videoFormats);
+  }
+
+  static List<File> getSubtitleFilesInDirectory(String directoryPath) {
+    return getFilesInDirectory(directoryPath, extensions: subtitleFormats);
   }
 
   static String getFileSizeString(int bytes) {

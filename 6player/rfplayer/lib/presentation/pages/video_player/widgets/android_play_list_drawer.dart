@@ -5,13 +5,11 @@ import 'package:rfplayer/core/localization/app_localizations.dart';
 import 'play_list_item.dart';
 
 class AndroidPlayListDrawer extends ConsumerStatefulWidget {
-  final bool isVisible;
   final VoidCallback onClose;
   final VoidCallback? onNavigateBack;
 
   const AndroidPlayListDrawer({
     super.key,
-    required this.isVisible,
     required this.onClose,
     this.onNavigateBack,
   });
@@ -27,23 +25,23 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
     final queue = ref.watch(playQueueProvider);
     final playQueueNotifier = ref.read(playQueueProvider.notifier);
 
-    if (!widget.isVisible) {
-      return Container();
-    }
-
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height;
+    final drawerHeight = size.height * (isLandscape ? 0.75 : 0.6);
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             spreadRadius: 5,
             blurRadius: 10,
           ),
         ],
       ),
-      height: MediaQuery.of(context).size.height * 0.6,
+      height: drawerHeight,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -51,7 +49,7 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+              border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -88,7 +86,6 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
                         isCurrentPlaying: item.isCurrentPlaying,
                         hasPlayed: item.hasPlayed,
                         onTap: () async {
-                          // 播放选中的视频
                           await playQueueNotifier.playItem(item.id);
                         },
                         onDelete: () async {
@@ -104,9 +101,14 @@ class _AndroidPlayListDrawerState extends ConsumerState<AndroidPlayListDrawer> {
 
           // 控制按钮
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + MediaQuery.of(context).padding.bottom,
+            ),
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.2))),
+              border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

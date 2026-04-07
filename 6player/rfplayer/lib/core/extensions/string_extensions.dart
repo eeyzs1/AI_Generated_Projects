@@ -7,7 +7,7 @@ extension StringExtensions on String {
   
   String get fileExtension {
     final lastDotIndex = lastIndexOf('.');
-    if (lastDotIndex == -1) return '';
+    if (lastDotIndex == -1 || lastDotIndex >= length - 1) return '';
     return substring(lastDotIndex + 1).toLowerCase();
   }
 }

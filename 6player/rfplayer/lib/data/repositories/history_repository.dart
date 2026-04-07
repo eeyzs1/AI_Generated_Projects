@@ -32,7 +32,14 @@ class HistoryRepository {
   }
 
   Future<void> cleanupInvalidRecords() async {
-    // 清理无效记录的逻辑
+    final records = await _dao.getHistory(limit: 1000, offset: 0);
+    for (final record in records) {
+      if (!record.path.startsWith('content://')) {
+        if (!File(record.path).existsSync()) {
+          await _dao.deleteById(record.id);
+        }
+      }
+    }
   }
 
   Future<void> updateThumbnail(String path, String thumbnailPath) async {
@@ -47,8 +54,7 @@ class HistoryRepository {
     return _dao.getHistory(limit: limit, offset: 0);
   }
 
-  Future<void> deleteByPath(String path) {
-    // 实现根据路径删除历史记录的逻辑
-    return Future.value();
+  Future<void> deleteByPath(String path) async {
+    await _dao.deleteByPath(path);
   }
 }

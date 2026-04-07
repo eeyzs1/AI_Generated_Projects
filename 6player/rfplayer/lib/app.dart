@@ -60,12 +60,11 @@ class RFPlayerApp extends ConsumerWidget {
 
   Locale _resolveLocale(AppLanguage language) {
     switch (language) {
-      case AppLanguage.zh_CN:
+      case AppLanguage.zhCn:
         return const Locale('zh', 'CN');
-      case AppLanguage.en_US:
+      case AppLanguage.enUs:
         return const Locale('en', 'US');
       case AppLanguage.system:
-      default:
         return Locale(Platform.localeName.split('_')[0]);
     }
   }
@@ -82,7 +81,6 @@ class RFPlayerApp extends ConsumerWidget {
       case ThemeMode.dark:
         return material.ThemeMode.dark;
       case ThemeMode.system:
-      default:
         return material.ThemeMode.system;
     }
   }
@@ -94,7 +92,6 @@ class RFPlayerApp extends ConsumerWidget {
       case ThemeMode.dark:
         return fluent.ThemeMode.dark;
       case ThemeMode.system:
-      default:
         return fluent.ThemeMode.system;
     }
   }

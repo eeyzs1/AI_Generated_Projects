@@ -6,12 +6,12 @@ part of 'model_manager.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$modelManagerHash() => r'4334ed0e4ca73603a244638ee0c293d441b9f442';
+String _$modelManagerHash() => r'779541f71b8d4d4690716fbc7a34b5e8b05690b5';
 
 /// See also [ModelManager].
 @ProviderFor(ModelManager)
 final modelManagerProvider =
-    AutoDisposeNotifierProvider<ModelManager, ModelType>.internal(
+    NotifierProvider<ModelManager, ModelState>.internal(
   ModelManager.new,
   name: r'modelManagerProvider',
   debugGetCreateSourceHash:
@@ -20,6 +20,6 @@ final modelManagerProvider =
   allTransitiveDependencies: null,
 );
 
-typedef _$ModelManager = AutoDisposeNotifier<ModelType>;
+typedef _$ModelManager = Notifier<ModelState>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

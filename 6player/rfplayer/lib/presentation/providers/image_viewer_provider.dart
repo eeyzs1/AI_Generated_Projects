@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:saf_stream/saf_stream.dart';
 import '../../core/extensions/string_extensions.dart';
+import '../../core/utils/content_uri_utils.dart';
 
 class ImageInfo {
   final String fileName;
@@ -12,6 +15,7 @@ class ImageInfo {
   final int fileSize;
   final DateTime modifiedAt;
   final String format;
+  final Uint8List? bytes;
 
   ImageInfo({
     required this.fileName,
@@ -21,6 +25,7 @@ class ImageInfo {
     required this.fileSize,
     required this.modifiedAt,
     required this.format,
+    this.bytes,
   });
 }
 
@@ -35,6 +40,8 @@ class ImageViewerState {
   final double currentScale;
   final ImageInfo? imageInfo;
   final bool isLoading;
+  final String? customFileName;
+  final Uint8List? initialBytes;
 
   ImageViewerState({
     required this.currentPath,
@@ -47,9 +54,14 @@ class ImageViewerState {
     this.currentScale = 1.0,
     this.imageInfo,
     this.isLoading = false,
+    this.customFileName,
+    this.initialBytes,
   });
 
-  String get currentFileName => p.basename(currentPath);
+  String get currentFileName {
+    if (customFileName != null) return customFileName!;
+    return p.basename(currentPath);
+  }
   int get totalCount => imagePaths.length;
   bool get canGoPrevious => currentIndex > 0;
   bool get canGoNext => currentIndex < imagePaths.length - 1;
@@ -65,6 +77,8 @@ class ImageViewerState {
     double? currentScale,
     ImageInfo? imageInfo,
     bool? isLoading,
+    String? customFileName,
+    Uint8List? initialBytes,
   }) {
     return ImageViewerState(
       currentPath: currentPath ?? this.currentPath,
@@ -77,17 +91,23 @@ class ImageViewerState {
       currentScale: currentScale ?? this.currentScale,
       imageInfo: imageInfo ?? this.imageInfo,
       isLoading: isLoading ?? this.isLoading,
+      customFileName: customFileName ?? this.customFileName,
+      initialBytes: initialBytes ?? this.initialBytes,
     );
   }
 }
 
 class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
-  ImageViewerNotifier(String initialPath) : super(
+  final SafStream _safStream = SafStream();
+
+  ImageViewerNotifier(String initialPath, {String? customFileName, Uint8List? initialBytes}) : super(
     ImageViewerState(
       currentPath: initialPath,
       currentIndex: 0,
       imagePaths: [initialPath],
       isLoading: true,
+      customFileName: customFileName,
+      initialBytes: initialBytes,
     ),
   ) {
     _initialize();
@@ -100,6 +120,11 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
   }
 
   Future<void> _loadDirectoryImages() async {
+    if (ContentUriUtils.isContentUri(state.currentPath)) {
+      // 对于 content URI，不加载目录中的其他图片
+      return;
+    }
+    
     final directory = p.dirname(state.currentPath);
     final dir = Directory(directory);
     
@@ -121,31 +146,155 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
     }
   }
 
-  Future<void> _loadImageInfo() async {
-    try {
-      final file = File(state.currentPath);
-      if (await file.exists()) {
-        final stat = await file.stat();
-        final fileName = p.basename(state.currentPath);
-        final extension = p.extension(state.currentPath).toUpperCase().replaceAll('.', '');
-        
-        // 获取图片尺寸
-        final image = await decodeImageFromList(await file.readAsBytes());
-        
-        state = state.copyWith(
-          imageInfo: ImageInfo(
-            fileName: fileName,
-            filePath: state.currentPath,
-            width: image.width,
-            height: image.height,
-            fileSize: stat.size,
-            modifiedAt: stat.modified,
-            format: extension.isEmpty ? 'UNKNOWN' : extension,
-          ),
-        );
+  String _inferImageFormat(Uint8List bytes, String fallbackFileName) {
+    // 从字节数据的魔数推断图片格式
+    if (bytes.length >= 8) {
+      if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+        return 'JPEG';
       }
-    } catch (e) {
-      debugPrint('Error loading image info: $e');
+      if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A) {
+        return 'PNG';
+      }
+      if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38) {
+        return 'GIF';
+      }
+      if (bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46) {
+        if (bytes.length >= 12 && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
+          return 'WEBP';
+        }
+      }
+      if (bytes[0] == 0x42 && bytes[1] == 0x4D) {
+        return 'BMP';
+      }
+    }
+    // 如果无法推断，尝试从文件名获取
+    final extension = p.extension(fallbackFileName).toUpperCase().replaceAll('.', '');
+    return extension.isEmpty ? 'UNKNOWN' : extension;
+  }
+
+  String? _tryExtractRealPathFromContentUri(String contentUri) {
+    debugPrint('[ImageViewerProvider] 尝试从 content URI 提取真实路径: $contentUri');
+    
+    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
+    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
+    if (contentUri.contains('/document/')) {
+      final parts = contentUri.split('/document/');
+      if (parts.length == 2) {
+        final encodedPath = parts[1];
+        debugPrint('[ImageViewerProvider] 找到编码部分: $encodedPath');
+        
+        // 检查常见的前缀并移除
+        String pathToDecode = encodedPath;
+        if (pathToDecode.startsWith('raw%3A')) {
+          pathToDecode = pathToDecode.substring(6);
+          debugPrint('[ImageViewerProvider] 移除 raw: 前缀');
+        } else if (pathToDecode.startsWith('msf%3A')) {
+          debugPrint('[ImageViewerProvider] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
+          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
+          return null;
+        }
+        
+        // URL 解码
+        try {
+          final decodedPath = Uri.decodeComponent(pathToDecode);
+          debugPrint('[ImageViewerProvider] URL 解码后: $decodedPath');
+          
+          // 检查是否是一个绝对路径
+          if (decodedPath.startsWith('/')) {
+            debugPrint('[ImageViewerProvider] 提取到真实路径: $decodedPath');
+            return decodedPath;
+          }
+        } catch (e) {
+          debugPrint('[ImageViewerProvider] URL 解码失败: $e');
+        }
+      }
+    }
+    
+    debugPrint('[ImageViewerProvider] 无法从 content URI 提取真实路径');
+    return null;
+  }
+
+  Future<void> _loadImageInfo() async {
+    debugPrint('[ImageViewerProvider] ======== 加载图片信息 ========');
+    debugPrint('[ImageViewerProvider] currentPath: ${state.currentPath}');
+    debugPrint('[ImageViewerProvider] customFileName: ${state.customFileName}');
+    debugPrint('[ImageViewerProvider] initialBytes: ${state.initialBytes != null ? '有数据' : '无数据'}');
+    
+    try {
+      Uint8List bytes;
+      String fileName;
+      String effectivePath = state.currentPath;
+      bool isContentUri = ContentUriUtils.isContentUri(state.currentPath);
+      
+      // 如果是 content URI，先尝试提取真实路径（即使有 initialBytes 也这么做）
+      String? realPath;
+      if (isContentUri) {
+        realPath = _tryExtractRealPathFromContentUri(state.currentPath);
+        if (realPath != null) {
+          final realFile = File(realPath);
+          if (await realFile.exists()) {
+            debugPrint('[ImageViewerProvider] 真实路径文件存在，使用真实路径');
+            effectivePath = realPath;
+            isContentUri = false;
+          } else {
+            debugPrint('[ImageViewerProvider] 真实路径文件不存在，继续使用 content URI');
+          }
+        }
+      }
+      
+      // 优先使用从路由传递过来的 initialBytes
+      if (state.initialBytes != null) {
+        debugPrint('[ImageViewerProvider] 使用 initialBytes');
+        bytes = state.initialBytes!;
+        fileName = state.customFileName ?? p.basename(effectivePath);
+      } else if (isContentUri) {
+        debugPrint('[ImageViewerProvider] 检测到 content URI，使用 saf_stream 读取');
+        bytes = await _safStream.readFileBytes(effectivePath);
+        fileName = state.customFileName ?? p.basename(effectivePath);
+      } else {
+        debugPrint('[ImageViewerProvider] 处理普通文件');
+        final file = File(effectivePath);
+        if (!await file.exists()) {
+          debugPrint('[ImageViewerProvider] 普通文件不存在');
+          return;
+        }
+        bytes = await file.readAsBytes();
+        fileName = p.basename(effectivePath);
+      }
+      
+      debugPrint('[ImageViewerProvider] 读取成功，字节数: ${bytes.length}');
+      
+      final image = await decodeImageFromList(bytes);
+      final format = _inferImageFormat(bytes, fileName);
+      
+      int fileSize;
+      DateTime modifiedAt;
+      
+      if (isContentUri) {
+        fileSize = bytes.length;
+        modifiedAt = DateTime.now();
+      } else {
+        final stat = await File(effectivePath).stat();
+        fileSize = stat.size;
+        modifiedAt = stat.modified;
+      }
+      
+      state = state.copyWith(
+        imageInfo: ImageInfo(
+          fileName: fileName,
+          filePath: effectivePath,
+          width: image.width,
+          height: image.height,
+          fileSize: fileSize,
+          modifiedAt: modifiedAt,
+          format: format,
+          bytes: bytes,
+        ),
+      );
+      debugPrint('[ImageViewerProvider] 图片信息加载完成，格式: $format, 路径: $effectivePath');
+    } catch (e, stackTrace) {
+      debugPrint('[ImageViewerProvider] 加载图片信息失败: $e');
+      debugPrint('[ImageViewerProvider] Stack trace: $stackTrace');
     }
   }
 
@@ -222,6 +371,33 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
   }
 }
 
-final imageViewerProvider = StateNotifierProvider.family<ImageViewerNotifier, ImageViewerState, String>(
-  (ref, path) => ImageViewerNotifier(path),
+class ImageViewerParams {
+  final String path;
+  final String? customFileName;
+  final Uint8List? initialBytes;
+
+  ImageViewerParams({
+    required this.path,
+    this.customFileName,
+    this.initialBytes,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImageViewerParams &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          customFileName == other.customFileName;
+
+  @override
+  int get hashCode => path.hashCode ^ customFileName.hashCode;
+}
+
+final imageViewerProvider = StateNotifierProvider.family<ImageViewerNotifier, ImageViewerState, ImageViewerParams>(
+  (ref, params) => ImageViewerNotifier(
+    params.path,
+    customFileName: params.customFileName,
+    initialBytes: params.initialBytes,
+  ),
 );

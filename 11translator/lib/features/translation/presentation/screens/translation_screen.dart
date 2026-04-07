@@ -261,6 +261,198 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
       );
     }
 
+    if (state.isWordOrPhrase && state.hasDictionaryResult) {
+      return _buildDictionaryResult(state);
+    } else {
+      return _buildSimpleResult(state);
+    }
+  }
+
+  Widget _buildDictionaryResult(TranslationState state) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '详细释义',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                IconButton(
+                  onPressed: () {
+                    final buffer = StringBuffer();
+                    buffer.writeln(state.targetText);
+                    if (state.phonetic != null) {
+                      buffer.writeln('\n音标：${state.phonetic}');
+                    }
+                    if (state.definitions != null && state.definitions!.isNotEmpty) {
+                      buffer.writeln('\n释义：');
+                      for (int i = 0; i < state.definitions!.length; i++) {
+                        buffer.writeln('${i + 1}. ${state.definitions![i]}');
+                      }
+                    }
+                    if (state.examples != null && state.examples!.isNotEmpty) {
+                      buffer.writeln('\n例句：');
+                      for (int i = 0; i < state.examples!.length; i++) {
+                        buffer.writeln('${i + 1}. ${state.examples![i]}');
+                      }
+                    }
+                    Clipboard.setData(ClipboardData(text: buffer.toString()));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已复制到剪贴板')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy),
+                  tooltip: '复制全部',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SelectableText(
+                state.targetText,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (state.phonetic != null) ...[
+              Row(
+                children: [
+                  Icon(Icons.record_voice_over, size: 20, color: Theme.of(context).colorScheme.secondary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '音标',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  state.phonetic!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'Courier',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (state.definitions != null && state.definitions!.isNotEmpty) ...[
+              Row(
+                children: [
+                  Icon(Icons.description, size: 20, color: Theme.of(context).colorScheme.secondary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '释义',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...state.definitions!.asMap().entries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${entry.key + 1}. ',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      Expanded(
+                        child: SelectableText(
+                          entry.value,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+            if (state.examples != null && state.examples!.isNotEmpty) ...[
+              Row(
+                children: [
+                  Icon(Icons.format_quote, size: 20, color: Theme.of(context).colorScheme.secondary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '例句',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...state.examples!.asMap().entries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${entry.key + 1}. ',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        Expanded(
+                          child: SelectableText(
+                            entry.value,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSimpleResult(TranslationState state) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -278,33 +470,29 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                   '翻译结果',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: state.targetText));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已复制到剪贴板')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy),
-                      tooltip: '复制',
-                    ),
-                  ],
+                IconButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: state.targetText));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已复制到剪贴板')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy),
+                  tooltip: '复制',
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceVariant,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: SelectableText(
                 state.targetText,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
           ],

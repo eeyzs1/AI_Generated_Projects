@@ -11,13 +11,15 @@ class InferenceParams {
   final int topK;
   final int maxTokens;
   final double repeatPenalty;
+  final List<String>? stop;
 
   const InferenceParams({
-    this.temperature = 0.1,
-    this.topP = 0.9,
-    this.topK = 40,
+    this.temperature = 0.0,
+    this.topP = 1.0,
+    this.topK = 1,
     this.maxTokens = 256,
-    this.repeatPenalty = 1.1,
+    this.repeatPenalty = 1.05,
+    this.stop,
   });
 
   static const defaults = InferenceParams();
@@ -31,44 +33,26 @@ abstract class LlmDataSource {
   Future<void> dispose();
 }
 
-class MockLlmDataSource implements LlmDataSource {
-  @override
-  Future<void> loadModel(String modelPath) async {
-    await Future.delayed(const Duration(milliseconds: 100));
-  }
-
-  @override
-  Stream<String> generate(String prompt, {InferenceParams? params}) async* {
-    yield '本地 LLM 功能正在开发中...\n';
-    yield '提示: $prompt';
-  }
-
-  @override
-  Future<void> releaseContext() async {}
-
-  @override
-  Future<void> restoreContext() async {}
-
-  @override
-  Future<void> dispose() async {}
-}
-
 @riverpod
 class LlmService extends _$LlmService {
   LlmDataSource? _datasource;
   String? _modelPath;
+  bool _isReady = false;
 
   @override
   LlmStatus build() => LlmStatus.notLoaded;
 
   Future<void> initialize(String modelPath) async {
     state = LlmStatus.loading;
+    _isReady = false;
     _modelPath = modelPath;
     try {
       _datasource = _createLlmDataSource();
       await _datasource!.loadModel(modelPath);
+      _isReady = true;
       state = LlmStatus.ready;
     } catch (e) {
+      _isReady = false;
       state = LlmStatus.error;
       rethrow;
     }
@@ -90,18 +74,59 @@ class LlmService extends _$LlmService {
     await _datasource?.restoreContext();
   }
 
+  bool _isWordOrPhrase(String text) {
+    final cleaned = text.trim();
+    final words = cleaned.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    return words.length <= 3 && cleaned.length <= 50;
+  }
+
   Stream<String> translate(String text, {String targetLang = 'zh'}) {
-    if (state != LlmStatus.ready) {
+    if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
-    final prompt = targetLang == 'zh'
-        ? '将以下英文翻译成中文，只输出译文，不要解释：\n$text'
-        : '将以下中文翻译成英文，只输出译文，不要解释：\n$text';
-    return _datasource!.generate(prompt, params: InferenceParams.defaults);
+    
+    final isWordOrPhrase = _isWordOrPhrase(text);
+        
+    String prompt;
+    int maxTokens;
+
+    if (isWordOrPhrase) {
+      if (targetLang == 'zh') {
+        prompt = '翻译为中文：$text';
+      } else {
+        prompt = '翻译为英文：$text';
+      }
+      maxTokens = 100;
+    } else {
+      if (targetLang == 'zh') {
+        prompt = '请将以下内容翻译成中文，只输出翻译结果：$text';
+      } else {
+        prompt = '请将以下内容翻译成英文，只输出翻译结果：$text';
+      }
+      maxTokens = 256;
+    }
+
+    return _datasource!.generate(
+      prompt, 
+      params: InferenceParams(
+        maxTokens: maxTokens,
+        temperature: 0.3,
+        topP: 0.9,
+        topK: 40,
+        repeatPenalty: 1.05,
+        stop: [
+          '<|im_end|>',
+        ], 
+      ),
+    );
+  }
+  
+  bool isWordOrPhrase(String text) {
+    return _isWordOrPhrase(text);
   }
 
   Stream<String> distinguish(List<String> words) {
-    if (state != LlmStatus.ready) {
+    if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
     final wordList = words.join('、');
@@ -110,12 +135,14 @@ class LlmService extends _$LlmService {
   }
 
   Stream<String> generateExample(String word) {
-    if (state != LlmStatus.ready) {
+    if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
     final prompt = '用英文单词"$word"造一个自然的例句，并给出中文翻译。格式：\n英文：...\n中文：...';
     return _datasource!.generate(prompt, params: const InferenceParams(maxTokens: 128));
   }
+
+  LlmDataSource? get dataSource => _datasource;
 }
 
 final llmModelNameProvider = Provider<String?>((ref) => null);

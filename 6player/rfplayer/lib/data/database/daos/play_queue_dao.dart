@@ -92,20 +92,6 @@ class PlayQueueDao extends DatabaseAccessor<AppDatabase> with _$PlayQueueDaoMixi
     );
   }
 
-  PlayQueueTableCompanion _toCompanion(PlayQueueItem item) {
-    return PlayQueueTableCompanion(
-      id: Value(item.id),
-      path: Value(item.path),
-      displayName: Value(item.displayName),
-      sortOrder: Value(item.sortOrder),
-      addedAt: Value(item.addedAt.millisecondsSinceEpoch),
-      isCurrentPlaying: Value(item.isCurrentPlaying ? 1 : 0),
-      hasPlayed: Value(item.hasPlayed ? 1 : 0),
-      playProgress: Value(item.playProgress),
-      isInvalid: Value(item.isInvalid),
-    );
-  }
-
   Future<void> resetAllCurrentPlaying() async {
     await (update(playQueueTable)
           ..where((t) => t.isCurrentPlaying.equals(1)))

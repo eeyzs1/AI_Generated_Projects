@@ -1,0 +1,49 @@
+  void _showVideoInfo(BuildContext context) {
+    final loc = AppLocalizations.of(context)!;
+    final playerService = ref.read(playerServiceProvider);
+    if (!playerService.isInitialized || playerService.controller == null) return;
+    
+    final controller = playerService.controller!;
+    final mediaInfo = controller.videoController.getMediaInfo();
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black87,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${loc.fileName}: ${_currentFileName ?? p.basename(widget.path)}', style: const TextStyle(color: Colors.white)),
+              const SizedBox(height: 8),
+              Text('${loc.filePath}: ${widget.path}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              const SizedBox(height: 8),
+              if (mediaInfo != null) ...[
+                if (mediaInfo.video != null && mediaInfo.video!.isNotEmpty) ...[
+                  Text('${loc.duration}: ${_formatDuration(_duration)}', style: const TextStyle(color: Colors.white)),
+                  const SizedBox(height: 8),
+                  if (mediaInfo.video!.first.width != null && mediaInfo.video!.first.height != null)
+                    Text('${loc.dimensions}: ${mediaInfo.video!.first.width} × ${mediaInfo.video!.first.height}', style: const TextStyle(color: Colors.white)),
+                  if (mediaInfo.video!.first.width != null && mediaInfo.video!.first.height != null)
+                    const SizedBox(height: 8),
+                  if (mediaInfo.video!.first.frameRate != null)
+                    Text('Frame Rate: ${mediaInfo.video!.first.frameRate?.toStringAsFixed(1)} fps', style: const TextStyle(color: Colors.white)),
+                  if (mediaInfo.video!.first.frameRate != null)
+                    const SizedBox(height: 8),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }

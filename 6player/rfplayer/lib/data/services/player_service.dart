@@ -1,23 +1,22 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_player/video_player.dart';
 import 'package:rfplayer/presentation/pages/video_player/video_player_controller.dart';
-import 'package:rfplayer/data/repositories/play_queue_repository.dart';
+import 'package:rfplayer/core/utils/real_path_utils.dart';
+import 'package:rfplayer/presentation/providers/permission_provider.dart';
 
-class PlayerService {
+class PlayerService extends ChangeNotifier {
   static PlayerService? _instance;
   static PlayerService get instance => _instance ??= PlayerService._();
   
   MyVideoPlayerController? _controller;
   bool _isInitialized = false;
   String? _currentPath;
-  WidgetRef? _ref;
+  String? _currentFileName;
   
   PlayerService._();
   
-  Future<void> initialize(String path, WidgetRef ref) async {
-    _ref = ref;
-    
+  Future<void> initialize(String path, WidgetRef ref, {String? fileName}) async {
     if (_currentPath == path && _isInitialized) {
       // 如果已经初始化并且路径相同，直接返回
       return;
@@ -28,16 +27,37 @@ class PlayerService {
       _controller!.dispose();
     }
     
+    // 尝试获取真实路径
+    String pathToUse = path;
+    if (path.startsWith('content://')) {
+      debugPrint('[PlayerService] 原始路径是 content URI，尝试获取真实路径...');
+      final permissionState = ref.read(permissionProvider);
+      if (permissionState.hasStoragePermission) {
+        debugPrint('[PlayerService] 有存储权限，使用原生通道尝试获取真实路径...');
+        final realPathFromNative = await RealPathUtils.getRealPath(path);
+        if (realPathFromNative != null) {
+          final realFile = File(realPathFromNative);
+          if (await realFile.exists()) {
+            pathToUse = realPathFromNative;
+            debugPrint('[PlayerService] 原生通道获取到真实路径并存在: $pathToUse');
+          }
+        }
+      }
+    }
+    
     // 创建新的控制器
-    _controller = MyVideoPlayerController(path, ref);
+    _controller = MyVideoPlayerController(pathToUse, ref, fileName: fileName);
     await _controller!.initialize();
     
-    _currentPath = path;
+    _currentPath = pathToUse;
+    _currentFileName = fileName;
     _isInitialized = true;
   }
   
   void play() {
+    debugPrint('[PlayerService] play() called, controller: $_controller, isInitialized: $_isInitialized');
     if (_controller != null && _isInitialized) {
+      debugPrint('[PlayerService] calling _controller.play()');
       _controller!.play();
     }
   }
@@ -60,6 +80,7 @@ class PlayerService {
     }
   }
   
+  @override
   void dispose() {
     if (_controller != null) {
       _controller!.dispose();
@@ -67,18 +88,13 @@ class PlayerService {
     }
     _isInitialized = false;
     _currentPath = null;
-    _ref = null;
+    super.dispose();
   }
   
   Future<void> updateLastPlaybackPosition() async {
     if (_controller != null) {
       await _controller!.updatePlaybackPosition();
     }
-  }
-  
-  // 清空ref引用
-  void clearRef() {
-    _ref = null;
   }
   
   // 停止所有异步操作
@@ -91,16 +107,20 @@ class PlayerService {
       _controller = null;
       _isInitialized = false;
       _currentPath = null;
-      _ref = null;
     }
   }
   
   MyVideoPlayerController? get controller => _controller;
   bool get isInitialized => _isInitialized;
   String? get currentPath => _currentPath;
+
+  // 通知监听器状态变化
+  void notifyStateChanged() {
+    notifyListeners();
+  }
 }
 
 // 播放器服务提供者
-final playerServiceProvider = Provider<PlayerService>((ref) {
+final playerServiceProvider = ChangeNotifierProvider<PlayerService>((ref) {
   return PlayerService.instance;
 });

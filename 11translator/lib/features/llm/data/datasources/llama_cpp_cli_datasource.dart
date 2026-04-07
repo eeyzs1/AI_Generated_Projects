@@ -69,6 +69,7 @@ class LlamaCppCliDataSource implements LlmDataSource {
     }
 
     final effectiveParams = params ?? InferenceParams.defaults;
+    final stopTokens = effectiveParams.stop ?? [];
     
     final args = [
       '-m', _modelPath!,
@@ -88,19 +89,41 @@ class LlamaCppCliDataSource implements LlmDataSource {
         args,
       );
 
-      final completer = Completer<void>();
-      bool hasStarted = false;
+      final controller = StreamController<String>();
+      final StringBuffer accumulatedText = StringBuffer();
+      bool hasStartedOutput = false;
 
       process.stdout
           .transform(utf8.decoder)
           .listen((data) {
-            if (!hasStarted) {
-              hasStarted = true;
-            }
             if (data.trim().isNotEmpty) {
-              yield data;
+              accumulatedText.write(data);
+              final currentText = accumulatedText.toString();
+              
+              // 一旦检测到任何停止符，立即停止
+              bool shouldStop = false;
+              for (final stopToken in stopTokens) {
+                if (currentText.contains(stopToken)) {
+                  shouldStop = true;
+                  break;
+                }
+              }
+              
+              // 额外的严格检测：只要有输出后，只要看到 ### 就立即停止
+              if (!shouldStop && hasStartedOutput && currentText.contains('###')) {
+                shouldStop = true;
+              }
+              
+              // 如果不停止才添加 token
+              if (!shouldStop) {
+                hasStartedOutput = true;
+                controller.add(data);
+              } else {
+                controller.close();
+                return;
+              }
             }
-          }, onDone: () => completer.complete());
+          }, onDone: () => controller.close());
 
       process.stderr
           .transform(utf8.decoder)
@@ -108,7 +131,8 @@ class LlamaCppCliDataSource implements LlmDataSource {
             // 可以在这里处理错误输出
           });
 
-      await completer.future;
+      yield* controller.stream;
+      
       final exitCode = await process.exitCode;
 
       if (exitCode != 0) {

@@ -1,251 +1,294 @@
 import 'dart:io';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
+import '../../data/models/play_history.dart' show MediaType;
 
-import '../../core/utils/file_utils.dart';
-
-/// 缩略图服务 - 生成和管理媒体文件缩略图
-/// 图片：直接复制/缩放原图
-/// LRU 缓存（最多 200 张）
 class ThumbnailService {
-  static const int _maxCacheSize = 200;
-  /// 缩略图宽度
-  static const int thumbnailWidth = 320;
-  /// 缩略图高度
-  static const int thumbnailHeight = 180;
-  
-  String? _cacheDirectory;
-  final Map<String, String> _memoryCache = {};
-  final List<String> _cacheOrder = [];
+  static final ThumbnailService _instance = ThumbnailService._internal();
+  factory ThumbnailService() => _instance;
+  ThumbnailService._internal();
 
-  /// 获取缓存目录
+  final FcNativeVideoThumbnail _plugin = FcNativeVideoThumbnail();
+  final Map<String, String> _memoryCache = {};
+
   Future<String> get cacheDirectory async {
-    if (_cacheDirectory == null) {
-      final appCache = await getApplicationCacheDirectory();
-      _cacheDirectory = p.join(appCache.path, 'thumbnails');
-      final dir = Directory(_cacheDirectory!);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+    final dir = await getTemporaryDirectory();
+    final thumbDir = Directory(p.join(dir.path, 'thumbnails'));
+    if (!await thumbDir.exists()) {
+      await thumbDir.create(recursive: true);
     }
-    return _cacheDirectory!;
+    return thumbDir.path;
   }
 
-  /// 生成缩略图缓存键（基于文件路径和时间戳）
   String _getCacheKey(String filePath) {
     final file = File(filePath);
-    final modified = file.lastModifiedSync().millisecondsSinceEpoch;
-    return '${filePath.hashCode}_$modified';
-  }
-
-  /// 获取缓存的缩略图路径
-  Future<String?> getThumbnail(String filePath) async {
-    final cacheKey = _getCacheKey(filePath);
-    if (_memoryCache.containsKey(cacheKey)) {
-      _cacheOrder.remove(cacheKey);
-      _cacheOrder.add(cacheKey);
-      return _memoryCache[cacheKey];
+    if (file.existsSync()) {
+      final stat = file.statSync();
+      return '${filePath.hashCode}_${stat.modified.millisecondsSinceEpoch}';
     }
-
-    final cacheDir = await cacheDirectory;
-    final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
-    final thumbFile = File(thumbPath);
-    if (await thumbFile.exists()) {
-      // 检查文件大小，如果文件大小为 0，就认为它是无效的
-      final fileSize = await thumbFile.length();
-      if (fileSize > 0) {
-        _addToMemoryCache(cacheKey, thumbPath);
-        return thumbPath;
-      } else {
-        // 删除无效的缓存文件
-        await thumbFile.delete();
-      }
-    }
-    return null;
+    return filePath.hashCode.toString();
   }
 
   void _addToMemoryCache(String key, String path) {
     _memoryCache[key] = path;
-    _cacheOrder.add(key);
-    
-    while (_memoryCache.length > _maxCacheSize) {
-      final oldestKey = _cacheOrder.removeAt(0);
-      _memoryCache.remove(oldestKey);
-    }
   }
 
-  /// 生成缩略图
-  Future<String?> generateThumbnail(String filePath) async {
-    final existingThumb = await getThumbnail(filePath);
-    if (existingThumb != null) {
-      return existingThumb;
-    }
-
-    String? thumbPath;
-
-    if (FileUtils.isVideoFile(filePath)) {
-      thumbPath = await _generateVideoThumbnail(filePath);
-    } else if (FileUtils.isImageFile(filePath)) {
-      thumbPath = await _generateImageThumbnail(filePath);
-    }
-    return thumbPath;
+  Future<String?> _getFromMemoryCache(String key) async {
+    return _memoryCache[key];
   }
 
-  /// 生成视频缩略图（使用 video_thumbnail 插件）
-  Future<String?> _generateVideoThumbnail(String filePath) async {
-    try {
-      final cacheDir = await cacheDirectory;
-      final cacheKey = _getCacheKey(filePath);
-      final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
-      
-      // 确保缓存目录存在
-      final dir = Directory(cacheDir);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      
-      // 检查文件是否存在
-      final videoFile = File(filePath);
-      if (!await videoFile.exists()) {
-        return null;
-      }
-      
-      // 检查文件大小
-      final fileSize = await videoFile.length();
-      if (fileSize == 0) {
-        return null;
-      }
-      
-      // 使用 compute 在 Isolate 中生成缩略图，避免阻塞 UI
-      final thumbnail = await compute(_generateVideoThumbnailInIsolate, {
-        'filePath': filePath,
-        'thumbPath': thumbPath,
-        'rootIsolateToken': RootIsolateToken.instance!,
-      });
-      
-      if (thumbnail != null) {
-        // 检查生成的文件是否有效
-        final thumbFile = File(thumbnail);
-        if (await thumbFile.exists() && await thumbFile.length() > 100) {
-          _addToMemoryCache(cacheKey, thumbnail);
-          return thumbnail;
-        } else {
-          if (await thumbFile.exists()) {
-            await thumbFile.delete();
-          }
-        }
-      }
-      // 所有方法都失败，返回 null
-    } catch (e) {
-      debugPrint('生成视频缩略图失败: $e');
+  MediaType? getMediaType(String filePath) {
+    final ext = p.extension(filePath).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].contains(ext)) {
+      return MediaType.image;
+    }
+    if (['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.3gp', '.m4v'].contains(ext)) {
+      return MediaType.video;
     }
     return null;
   }
 
-  /// 在 Isolate 中生成视频缩略图
+  Future<String?> getThumbnail(String filePath) async {
+    return await generateThumbnail(filePath);
+  }
+
+  Future<String?> generateThumbnail(String filePath, {MediaType? type}) async {
+    debugPrint('[ThumbnailService] generateThumbnail called for: $filePath, type: $type');
+    
+    final mediaType = type ?? getMediaType(filePath);
+    debugPrint('[ThumbnailService] isVideo: ${mediaType == MediaType.video}, isImage: ${mediaType == MediaType.image}');
+
+    final cacheKey = _getCacheKey(filePath);
+    
+    final cached = await _getFromMemoryCache(cacheKey);
+    if (cached != null) {
+      debugPrint('[ThumbnailService] Found in memory cache: $cached');
+      return cached;
+    }
+
+    final cacheDir = await cacheDirectory;
+    final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
+    
+    if (File(thumbPath).existsSync()) {
+      debugPrint('[ThumbnailService] Found existing thumbnail: $thumbPath');
+      _addToMemoryCache(cacheKey, thumbPath);
+      return thumbPath;
+    }
+
+    String? result;
+    if (mediaType == MediaType.video) {
+      result = await _generateVideoThumbnail(filePath, thumbPath, cacheKey);
+    } else if (mediaType == MediaType.image) {
+      result = await _generateImageThumbnail(filePath, thumbPath, cacheKey);
+    }
+
+    debugPrint('[ThumbnailService] Generated thumbnail path: $result');
+    return result;
+  }
+
+  Future<void> clearCache() async {
+    try {
+      final cacheDir = await cacheDirectory;
+      final dir = Directory(cacheDir);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+        await dir.create(recursive: true);
+      }
+      _memoryCache.clear();
+      debugPrint('[ThumbnailService] Cache cleared');
+    } catch (e) {
+      debugPrint('[ThumbnailService] Failed to clear cache: $e');
+    }
+  }
+
+  Future<void> clearThumbnail(String filePath) async {
+    try {
+      final cacheKey = _getCacheKey(filePath);
+      _memoryCache.remove(cacheKey);
+      
+      final cacheDir = await cacheDirectory;
+      final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
+      final file = File(thumbPath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      debugPrint('[ThumbnailService] Thumbnail cleared for: $filePath');
+    } catch (e) {
+      debugPrint('[ThumbnailService] Failed to clear thumbnail: $e');
+    }
+  }
+
+  Future<String?> _generateVideoThumbnail(String filePath, String thumbPath, String cacheKey) async {
+    try {
+      debugPrint('[Thumbnail] ======== 开始生成缩略图 ========');
+      debugPrint('[Thumbnail] _generateVideoThumbnail called for: $filePath');
+      debugPrint('[Thumbnail] Platform: ${Platform.operatingSystem}');
+      
+      final cacheDir = await cacheDirectory;
+      debugPrint('[Thumbnail] Cache key: $cacheKey, thumbPath: $thumbPath');
+      debugPrint('[Thumbnail] Cache directory: $cacheDir');
+      
+      final dir = Directory(cacheDir);
+      if (!await dir.exists()) {
+        debugPrint('[Thumbnail] Creating cache directory...');
+        await dir.create(recursive: true);
+      }
+      
+      final isContentUri = filePath.startsWith('content://');
+      debugPrint('[Thumbnail] Content URI detected: $isContentUri');
+      
+      if (!isContentUri) {
+        debugPrint('[Thumbnail] Checking regular file path...');
+        final videoFile = File(filePath);
+        if (!await videoFile.exists()) {
+          debugPrint('[Thumbnail] ERROR: Video file does not exist: $filePath');
+          return null;
+        }
+        debugPrint('[Thumbnail] Video file exists');
+        
+        final fileSize = await videoFile.length();
+        debugPrint('[Thumbnail] Video file size: $fileSize bytes');
+        if (fileSize == 0) {
+          debugPrint('[Thumbnail] ERROR: Video file is empty: $filePath');
+          return null;
+        }
+        
+        final extension = p.extension(filePath).toLowerCase();
+        debugPrint('[Thumbnail] Video file extension: $extension');
+      } else {
+        debugPrint('[Thumbnail] Content URI detected, skipping file existence check');
+      }
+      
+      debugPrint('[Thumbnail] Starting compute for thumbnail generation...');
+      final thumbnail = await compute(_generateVideoThumbnailInIsolate, {
+        'filePath': filePath,
+        'thumbPath': thumbPath,
+        'isContentUri': isContentUri,
+        'rootIsolateToken': RootIsolateToken.instance!,
+      });
+      
+      debugPrint('[Thumbnail] Compute returned: $thumbnail');
+      
+      if (thumbnail != null) {
+        final thumbFile = File(thumbnail);
+        final exists = await thumbFile.exists();
+        final size = exists ? await thumbFile.length() : 0;
+        debugPrint('[Thumbnail] Thumbnail file exists: $exists, size: $size bytes');
+        
+        if (exists && size > 100) {
+          _addToMemoryCache(cacheKey, thumbnail);
+          debugPrint('[Thumbnail] ======== 缩略图生成成功 ========');
+          return thumbnail;
+        } else {
+          debugPrint('[Thumbnail] ERROR: Thumbnail file invalid (too small or missing)');
+          if (exists) {
+            await thumbFile.delete();
+          }
+        }
+      } else {
+        debugPrint('[Thumbnail] ERROR: compute returned null');
+      }
+      
+      debugPrint('[Thumbnail] ======== 缩略图生成失败 ========');
+    } catch (e, stackTrace) {
+      debugPrint('[Thumbnail] ERROR: 生成视频缩略图失败: $e');
+      debugPrint('[Thumbnail] Stack trace: $stackTrace');
+    }
+    return null;
+  }
+  
   static Future<String?> _generateVideoThumbnailInIsolate(Map<String, dynamic> params) async {
     final filePath = params['filePath'] as String;
     final thumbPath = params['thumbPath'] as String;
+    final isContentUri = params['isContentUri'] as bool;
     final rootIsolateToken = params['rootIsolateToken'] as RootIsolateToken;
     
+    debugPrint('[Thumbnail Isolate] ======== Isolate 开始 ========');
+    debugPrint('[Thumbnail Isolate] Starting for filePath: $filePath, thumbPath: $thumbPath');
+    
     try {
-      // 初始化 BackgroundIsolateBinaryMessenger
+      debugPrint('[Thumbnail Isolate] Initializing BackgroundIsolateBinaryMessenger...');
       BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
+      debugPrint('[Thumbnail Isolate] BackgroundIsolateBinaryMessenger initialized');
       
-      final thumbnailGenerator = FcNativeVideoThumbnail();
-      final result = await thumbnailGenerator.saveThumbnailToFile(
+      final plugin = FcNativeVideoThumbnail();
+      
+      final destDir = Directory(p.dirname(thumbPath));
+      debugPrint('[Thumbnail Isolate] Destination directory: ${destDir.path}');
+      if (!await destDir.exists()) {
+        debugPrint('[Thumbnail Isolate] Creating destination directory...');
+        await destDir.create(recursive: true);
+      }
+      debugPrint('[Thumbnail Isolate] Destination directory ready');
+      
+      debugPrint('[Thumbnail Isolate] Calling FcNativeVideoThumbnail.saveThumbnailToFile with params:');
+      debugPrint('[Thumbnail Isolate]   srcFile: $filePath');
+      debugPrint('[Thumbnail Isolate]   srcFileUri: $isContentUri');
+      debugPrint('[Thumbnail Isolate]   destFile: $thumbPath');
+      debugPrint('[Thumbnail Isolate]   width: 320, height: 180, quality: 75');
+      
+      final stopwatch = Stopwatch()..start();
+      final result = await plugin.saveThumbnailToFile(
         srcFile: filePath,
+        srcFileUri: isContentUri,
         destFile: thumbPath,
         width: 320,
         height: 180,
-        format: 'jpeg',
         quality: 75,
       );
+      stopwatch.stop();
       
-      if (result == true) {
-        return thumbPath;
+      debugPrint('[Thumbnail Isolate] saveThumbnailToFile result: $result, took: ${stopwatch.elapsedMilliseconds}ms');
+      
+      if (result) {
+        debugPrint('[Thumbnail Isolate] Checking generated thumbnail file...');
+        final thumbFile = File(thumbPath);
+        final exists = await thumbFile.exists();
+        final size = exists ? await thumbFile.length() : 0;
+        
+        debugPrint('[Thumbnail Isolate] Thumbnail file exists: $exists, size: $size bytes');
+        
+        if (exists && size > 0) {
+          debugPrint('[Thumbnail Isolate] ======== Isolate 成功 ========');
+          return thumbPath;
+        } else {
+          debugPrint('[Thumbnail Isolate] ERROR: Thumbnail file is empty or missing');
+          if (exists) {
+            debugPrint('[Thumbnail Isolate] Deleting invalid thumbnail file...');
+            await thumbFile.delete();
+          }
+          debugPrint('[Thumbnail Isolate] ======== Isolate 失败 ========');
+          return null;
+        }
       } else {
+        debugPrint('[Thumbnail Isolate] ERROR: saveThumbnailToFile returned false');
+        debugPrint('[Thumbnail Isolate] ======== Isolate 失败 ========');
         return null;
       }
-    } catch (e) {
-      debugPrint('Isolate 中生成视频缩略图失败: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[Thumbnail Isolate] ERROR: Isolate 中生成视频缩略图失败: $e');
+      debugPrint('[Thumbnail Isolate] Stack trace: $stackTrace');
+      debugPrint('[Thumbnail Isolate] ======== Isolate 失败 ========');
       return null;
     }
   }
 
-  /// 生成图片缩略图（复制原图）
-  Future<String?> _generateImageThumbnail(String filePath) async {
+  Future<String?> _generateImageThumbnail(String filePath, String thumbPath, String cacheKey) async {
     try {
-      final cacheDir = await cacheDirectory;
-      final cacheKey = _getCacheKey(filePath);
-      final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
-
-      // 使用 compute 在 Isolate 中复制文件，避免阻塞 UI
-      final result = await compute(_copyFileInIsolate, {
-        'sourcePath': filePath,
-        'destinationPath': thumbPath,
-      });
-
-      if (result) {
+      debugPrint('[ThumbnailService] Generating image thumbnail for: $filePath');
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.copy(thumbPath);
         _addToMemoryCache(cacheKey, thumbPath);
         return thumbPath;
       }
     } catch (e) {
-      debugPrint('生成图片缩略图失败: $e');
+      debugPrint('[ThumbnailService] Failed to copy image: $e');
     }
     return null;
   }
-
-  /// 在 Isolate 中复制文件
-  static Future<bool> _copyFileInIsolate(Map<String, dynamic> params) async {
-    final sourcePath = params['sourcePath'] as String;
-    final destinationPath = params['destinationPath'] as String;
-    
-    try {
-      final sourceFile = File(sourcePath);
-      await sourceFile.copy(destinationPath);
-      return true;
-    } catch (e) {
-      debugPrint('Isolate 中复制文件失败: $e');
-      return false;
-    }
-  }
-
-  /// 异步生成缩略图
-  Future<String?> generateAsync(String filePath) async {
-    return generateThumbnail(filePath);
-  }
-
-  /// 清除所有缓存
-  Future<void> clearCache() async {
-    _memoryCache.clear();
-    _cacheOrder.clear();
-    
-    final cacheDir = await cacheDirectory;
-    final dir = Directory(cacheDir);
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
-      await dir.create(recursive: true);
-    }
-  }
-
-  /// 清除单个文件的缓存
-  Future<void> clearThumbnail(String filePath) async {
-    final cacheKey = _getCacheKey(filePath);
-    _memoryCache.remove(cacheKey);
-    _cacheOrder.remove(cacheKey);
-    
-    final cacheDir = await cacheDirectory;
-    final thumbPath = p.join(cacheDir, '$cacheKey.jpg');
-    final file = File(thumbPath);
-    if (await file.exists()) {
-      await file.delete();
-    }
-  }
-
-  /// 获取缓存数量
-  int get cachedCount => _memoryCache.length;
 }

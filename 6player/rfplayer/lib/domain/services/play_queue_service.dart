@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/play_queue_repository.dart';
 import '../../data/models/play_queue.dart';
 
@@ -74,12 +73,13 @@ class PlayQueueService {
     if (current == null) return;
     
     await _repository.markAsPlayed(current.id);
-    final next = await _repository.getNextItem(current.sortOrder);
-    if (next != null) {
+    final queue = await _repository.getAll();
+    final currentIndex = queue.indexWhere((item) => item.id == current.id);
+    if (currentIndex < queue.length - 1) {
+      final next = queue[currentIndex + 1];
       await _repository.setCurrentPlaying(next.id);
     } else {
       // 如果没有下一个项目，从队列第一个开始播放
-      final queue = await _repository.getAll();
       if (queue.isNotEmpty) {
         await _repository.setCurrentPlaying(queue[0].id);
       }

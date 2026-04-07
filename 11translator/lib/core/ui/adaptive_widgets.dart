@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fluent_ui/fluent_ui.dart' as fluent;
 import 'package:rfdictionary/core/localization/app_localizations.dart';
 
 UIStyle _getEffectiveStyle(UIStyle style) {
-  if (style == UIStyle.adaptive) {
-    return UIStyle.fluent;
-  }
-  return style;
+  // 暂时只使用 Material Design
+  return UIStyle.material3;
 }
 
 class AdaptiveScaffold extends ConsumerWidget {
@@ -26,23 +23,6 @@ class AdaptiveScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.FluentPage(
-        content: fluent.ScaffoldPage(
-          header: appBar != null
-              ? fluent.PageHeader(
-                  leading: appBar,
-                )
-              : null,
-          content: body,
-          bottomBar: bottomNavigationBar,
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: appBar as PreferredSizeWidget?,
       body: body,
@@ -66,31 +46,6 @@ class AdaptiveAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.Row(
-        children: [
-          if (leading != null) leading!,
-          if (title != null)
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: DefaultTextStyle(
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  child: title!,
-                ),
-              ),
-            ),
-          if (actions != null) ...actions!,
-        ],
-      );
-    }
-
     return AppBar(
       title: title,
       actions: actions,
@@ -116,21 +71,6 @@ class AdaptiveButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return isFilled
-          ? fluent.FilledButton(
-              onPressed: onPressed,
-              child: child,
-            )
-          : fluent.Button(
-              onPressed: onPressed,
-              child: child,
-            );
-    }
-
     return isFilled
         ? FilledButton(
             onPressed: onPressed,
@@ -157,17 +97,6 @@ class AdaptiveIconButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.IconButton(
-        icon: icon,
-        onPressed: onPressed,
-        tooltip: tooltip,
-      );
-    }
-
     return IconButton(
       icon: icon,
       onPressed: onPressed,
@@ -198,21 +127,6 @@ class AdaptiveTextField extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.TextBox(
-        controller: controller,
-        focusNode: focusNode,
-        placeholder: hintText,
-        prefix: prefixIcon,
-        suffix: suffixIcon,
-        onChanged: onChanged,
-        onSubmitted: onSubmitted,
-      );
-    }
-
     return TextField(
       controller: controller,
       focusNode: focusNode,
@@ -241,27 +155,6 @@ class AdaptiveNavigationBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-    final l10n = AppLocalizations.of(context);
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.NavigationView(
-        pane: fluent.NavigationPane(
-          selected: selectedIndex,
-          onChanged: onDestinationSelected,
-          items: destinations
-              .map((d) => fluent.PaneItem(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selectedIcon),
-                    title: Text(d.label),
-                  ))
-              .toList(),
-          displayMode: fluent.PaneDisplayMode.compact,
-        ),
-      );
-    }
-
     return NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
@@ -290,25 +183,9 @@ class AdaptiveCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final effectiveStyle = _getEffectiveStyle(settings.uiStyle);
-
     final content = padding != null
         ? Padding(padding: padding!, child: child)
         : child;
-
-    if (effectiveStyle == UIStyle.fluent) {
-      return fluent.Padding(
-        padding: const EdgeInsets.all(4),
-        child: fluent.Button(
-          onPressed: onTap,
-          style: fluent.ButtonStyle(
-            backgroundColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-          child: content,
-        ),
-      );
-    }
 
     return Card(
       child: InkWell(

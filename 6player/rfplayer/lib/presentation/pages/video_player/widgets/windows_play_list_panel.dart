@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rfplayer/presentation/providers/play_queue_provider.dart';
-import 'package:rfplayer/data/models/play_queue.dart';
 import 'package:rfplayer/core/localization/app_localizations.dart';
 import 'play_list_item.dart';
 
@@ -24,7 +23,7 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
     return Container(
       width: 300,
       decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        border: Border(left: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
         color: Colors.white,
       ),
       child: Column(
@@ -34,7 +33,7 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+              border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -97,7 +96,7 @@ class _WindowsPlayListPanelState extends ConsumerState<WindowsPlayListPanel> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.2))),
+              border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
