@@ -21,25 +21,6 @@ object RealPathUtil {
     fun getRealPath(context: Context, uri: Uri): String? {
         Log.d(TAG, "getRealPath: uri=$uri")
         
-        // First, try to get path from DocumentsContract if available (API 26+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val documentPath = DocumentsContract.findDocumentPath(context.contentResolver, uri)
-                if (documentPath != null && documentPath.path.isNotEmpty()) {
-                    val path = documentPath.path.joinToString("/")
-                    Log.d(TAG, "DocumentsContract.findDocumentPath found: $path")
-                    val fullPath = "/storage/emulated/0/$path"
-                    val file = File(fullPath)
-                    if (file.exists()) {
-                        Log.d(TAG, "Path exists: $fullPath")
-                        return fullPath
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error using DocumentsContract.findDocumentPath", e)
-            }
-        }
-        
         // DocumentProvider
         if (DocumentsContract.isDocumentUri(context, uri)) {
             Log.d(TAG, "It's a DocumentProvider URI")

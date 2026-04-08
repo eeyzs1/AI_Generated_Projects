@@ -24,48 +24,6 @@ class FileBrowserPage extends ConsumerStatefulWidget {
 
 class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   final SafStream _safStream = SafStream();
-  
-  String? _tryExtractRealPathFromContentUri(String contentUri) {
-    debugPrint('[FileBrowser] 尝试从 content URI 提取真实路径: $contentUri');
-    
-    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
-    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
-    if (contentUri.contains('/document/')) {
-      final parts = contentUri.split('/document/');
-      if (parts.length == 2) {
-        final encodedPath = parts[1];
-        debugPrint('[FileBrowser] 找到编码部分: $encodedPath');
-        
-        // 检查常见的前缀并移除
-        String pathToDecode = encodedPath;
-        if (pathToDecode.startsWith('raw%3A')) {
-          pathToDecode = pathToDecode.substring(6);
-          debugPrint('[FileBrowser] 移除 raw: 前缀');
-        } else if (pathToDecode.startsWith('msf%3A')) {
-          debugPrint('[FileBrowser] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
-          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
-          return null;
-        }
-        
-        // URL 解码
-        try {
-          final decodedPath = Uri.decodeComponent(pathToDecode);
-          debugPrint('[FileBrowser] URL 解码后: $decodedPath');
-          
-          // 检查是否是一个绝对路径
-          if (decodedPath.startsWith('/')) {
-            debugPrint('[FileBrowser] 提取到真实路径: $decodedPath');
-            return decodedPath;
-          }
-        } catch (e) {
-          debugPrint('[FileBrowser] URL 解码失败: $e');
-        }
-      }
-    }
-    
-    debugPrint('[FileBrowser] 无法从 content URI 提取真实路径');
-    return null;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -173,44 +131,31 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       debugPrint('[FileBrowser] ======== 处理选择的文件 ========');
       
       if (result.path != null) {
+        // 普通文件路径
         pathToUse = result.path;
         debugPrint('[FileBrowser] 使用普通文件路径: $pathToUse');
       } else if (result.uri != null) {
+        // Content URI，使用 RealPathUtils 转换为安全路径
         final contentUri = result.uri.toString();
-        debugPrint('[FileBrowser] 获得 content URI: $contentUri');
+        debugPrint('[FileBrowser] 获得 content URI，尝试转换为安全路径: $contentUri');
         
-        // 优先使用原生通道获取真实路径
-        final permissionState = ref.read(permissionProvider);
-        if (permissionState.hasStoragePermission) {
-          debugPrint('[FileBrowser] 使用原生通道尝试获取真实路径...');
-          final realPathFromNative = await RealPathUtils.getRealPath(contentUri);
-          if (realPathFromNative != null) {
-            final realFile = File(realPathFromNative);
-            if (await realFile.exists()) {
-              pathToUse = realPathFromNative;
-              debugPrint('[FileBrowser] 原生通道获取到真实路径并存在: $pathToUse');
-            }
-          }
-        }
+        // 使用 RealPathUtils.getSafePath 转换为安全路径（永远不会是 content URI）
+        pathToUse = await RealPathUtils.getSafePath(contentUri);
         
-        // 如果原生通道没获取到，尝试我们自己的提取方法
-        if (pathToUse == null && permissionState.hasStoragePermission) {
-          debugPrint('[FileBrowser] 尝试我们自己的提取方法...');
-          final realPath = _tryExtractRealPathFromContentUri(contentUri);
-          if (realPath != null) {
-            final realFile = File(realPath);
-            if (await realFile.exists()) {
-              pathToUse = realPath;
-              debugPrint('[FileBrowser] 自己的方法提取到真实路径并存在: $pathToUse');
-            }
-          }
-        }
-        
-        // 如果都没有获取到真实路径，使用 content URI
         if (pathToUse == null) {
-          debugPrint('[FileBrowser] 使用 content URI');
-          pathToUse = contentUri;
+          debugPrint('[FileBrowser] 无法将 content URI 转换为安全路径，不使用该文件');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('无法访问该文件，请使用文件选择器重新选择'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
         }
+        
+        debugPrint('[FileBrowser] 成功转换为安全路径: $pathToUse');
       }
       
       debugPrint('[FileBrowser] pathToUse: $pathToUse, name: ${result.name}');
@@ -231,23 +176,14 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             debugPrint('[FileBrowser] 是图片文件，开始读取字节数据...');
             // 尝试读取图片字节
             try {
-              if (result.path != null) {
-                // 普通文件路径
-                debugPrint('[FileBrowser] 读取普通文件字节...');
-                final file = File(result.path!);
-                if (await file.exists()) {
-                  debugPrint('[FileBrowser] 文件存在，开始读取...');
-                  imageBytes = await file.readAsBytes();
-                  debugPrint('[FileBrowser] 读取成功，字节数: ${imageBytes.length}');
-                } else {
-                  debugPrint('[FileBrowser] 文件不存在!');
-                }
-              } else if (result.uri != null) {
-                // Android content URI，使用 saf_stream 读取
-                debugPrint('[FileBrowser] 读取 content URI 字节...');
-                debugPrint('[FileBrowser] URI: ${result.uri}');
-                imageBytes = await _safStream.readFileBytes(result.uri!);
+              debugPrint('[FileBrowser] 使用安全路径读取图片字节...');
+              final file = File(pathToUse);
+              if (await file.exists()) {
+                debugPrint('[FileBrowser] 文件存在，开始读取...');
+                imageBytes = await file.readAsBytes();
                 debugPrint('[FileBrowser] 读取成功，字节数: ${imageBytes.length}');
+              } else {
+                debugPrint('[FileBrowser] 文件不存在!');
               }
             } catch (e, stackTrace) {
               debugPrint('[FileBrowser] Error reading image bytes: $e');
@@ -308,47 +244,6 @@ class _HistoryListItem extends ConsumerStatefulWidget {
 }
 
 class _HistoryListItemState extends ConsumerState<_HistoryListItem> {
-  String? _tryExtractRealPathFromContentUri(String contentUri) {
-    debugPrint('[HistoryListItem] 尝试从 content URI 提取真实路径: $contentUri');
-    
-    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
-    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
-    if (contentUri.contains('/document/')) {
-      final parts = contentUri.split('/document/');
-      if (parts.length == 2) {
-        final encodedPath = parts[1];
-        debugPrint('[HistoryListItem] 找到编码部分: $encodedPath');
-        
-        // 检查常见的前缀并移除
-        String pathToDecode = encodedPath;
-        if (pathToDecode.startsWith('raw%3A')) {
-          pathToDecode = pathToDecode.substring(6);
-          debugPrint('[HistoryListItem] 移除 raw: 前缀');
-        } else if (pathToDecode.startsWith('msf%3A')) {
-          debugPrint('[HistoryListItem] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
-          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
-          return null;
-        }
-        
-        // URL 解码
-        try {
-          final decodedPath = Uri.decodeComponent(pathToDecode);
-          debugPrint('[HistoryListItem] URL 解码后: $decodedPath');
-          
-          // 检查是否是一个绝对路径
-          if (decodedPath.startsWith('/')) {
-            debugPrint('[HistoryListItem] 提取到真实路径: $decodedPath');
-            return decodedPath;
-          }
-        } catch (e) {
-          debugPrint('[HistoryListItem] URL 解码失败: $e');
-        }
-      }
-    }
-    
-    debugPrint('[HistoryListItem] 无法从 content URI 提取真实路径');
-    return null;
-  }
 
   Widget _buildThumbnail(BuildContext context, WidgetRef ref) {
     final isVideo = widget.history.type == MediaType.video;
@@ -427,8 +322,9 @@ class _HistoryListItemState extends ConsumerState<_HistoryListItem> {
       builder: (context, ref, child) {
         final isVideo = widget.history.type == MediaType.video;
         bool isFileExists;
-        if (widget.history.path.startsWith('content://')) {
-          isFileExists = true; // URI 假设存在
+        if (RealPathUtils.isContentUri(widget.history.path)) {
+          // 对于 content URI，尝试转换为安全路径后检查
+          isFileExists = true; // 暂时假设存在，点击时会再次验证
         } else {
           isFileExists = File(widget.history.path).existsSync();
         }
@@ -456,44 +352,23 @@ class _HistoryListItemState extends ConsumerState<_HistoryListItem> {
             debugPrint('[HistoryListItem] ======== 点击历史记录 ========');
             debugPrint('[HistoryListItem] 原始路径: ${widget.history.path}');
             
-            String pathToUse = widget.history.path;
+            // 使用 RealPathUtils.getSafePath 转换为安全路径（永远不会是 content URI）
+            final pathToUse = await RealPathUtils.getSafePath(widget.history.path);
             
-            // 尝试从 content URI 提取真实路径
-            if (widget.history.path.startsWith('content://')) {
-              final permissionState = ref.read(permissionProvider);
-              if (permissionState.hasStoragePermission) {
-                debugPrint('[HistoryListItem] 有存储权限，先用原生通道尝试获取真实路径...');
-                final realPathFromNative = await RealPathUtils.getRealPath(widget.history.path);
-                if (realPathFromNative != null) {
-                  final realFile = File(realPathFromNative);
-                  if (await realFile.exists()) {
-                    pathToUse = realPathFromNative;
-                    debugPrint('[HistoryListItem] 原生通道获取到真实路径并存在: $pathToUse');
-                  } else {
-                    debugPrint('[HistoryListItem] 原生通道路径不存在');
-                  }
-                }
-                
-                // 如果原生通道没获取到，尝试我们自己的提取方法
-                if (pathToUse == widget.history.path) {
-                  debugPrint('[HistoryListItem] 尝试我们自己的提取方法...');
-                  final realPath = _tryExtractRealPathFromContentUri(widget.history.path);
-                  if (realPath != null) {
-                    final realFile = File(realPath);
-                    if (await realFile.exists()) {
-                      pathToUse = realPath;
-                      debugPrint('[HistoryListItem] 自己的方法提取到真实路径并存在，使用真实路径: $pathToUse');
-                    } else {
-                      debugPrint('[HistoryListItem] 真实路径不存在，使用原始路径');
-                    }
-                  } else {
-                    debugPrint('[HistoryListItem] 无法提取真实路径，使用原始路径');
-                  }
-                }
-              } else {
-                debugPrint('[HistoryListItem] 没有存储权限，使用原始路径');
+            if (pathToUse == null) {
+              debugPrint('[HistoryListItem] 无法转换为安全路径');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('无法访问该文件，请重新选择'),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
               }
+              return;
             }
+            
+            debugPrint('[HistoryListItem] 使用安全路径: $pathToUse');
             
             if (isVideo) {
               debugPrint('[HistoryListItem] 是视频文件，跳转到视频播放器');

@@ -8,9 +8,11 @@ import 'package:video_player/video_player.dart';
 import 'package:fast_file_picker/fast_file_picker.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../../core/utils/real_path_utils.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/constants/supported_formats.dart';
 import '../../../data/models/subtitle_track.dart';
+import '../../../data/models/play_queue.dart';
 
 import 'speed_control.dart';
 import '../../../presentation/providers/database_provider.dart';
@@ -304,11 +306,10 @@ class VideoPlayerPage extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
-  bool _isInitialized = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isPlaying = false;
-  double _volume = 1.0;
+  final double _volume = 1.0;
   double _playbackSpeed = 1.0;
   bool _showSpeedControl = false;
   bool _showVolumeControl = false;
@@ -337,6 +338,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   late FocusAttachment _focusAttachment;
   bool _isUpdateLoopRunning = false;
   bool _isDisposing = false;
+  bool _isInitializing = false; // 防止在初始化过程中 _handlePlayQueueChange 被触发
   
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
@@ -386,10 +388,34 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     });
   }
 
+  // 智能路径比较方法，处理 content:// URI 和真实文件路径的区别
+  bool _pathsMatch(String path1, String path2) {
+    debugPrint('[VideoPlayerPage] Comparing paths: path1=$path1, path2=$path2');
+    
+    // 完全相同的路径
+    if (path1 == path2) {
+      debugPrint('[VideoPlayerPage] Paths match exactly');
+      return true;
+    }
+    
+    // 使用 RealPathUtils 获取文件名进行比较
+    final name1 = RealPathUtils.getFileName(path1);
+    final name2 = RealPathUtils.getFileName(path2);
+    
+    debugPrint('[VideoPlayerPage] Extracted names: name1=$name1, name2=$name2');
+    
+    if (name1 == name2) {
+      debugPrint('[VideoPlayerPage] Paths match by filename');
+      return true;
+    }
+    
+    debugPrint('[VideoPlayerPage] Paths do not match');
+    return false;
+  }
+
   // 获取缓存的字幕菜单，只创建一次
   SubtitleMenu _getSubtitleMenu() {
-    if (_cachedSubtitleMenu == null) {
-      _cachedSubtitleMenu = SubtitleMenu(
+    _cachedSubtitleMenu ??= SubtitleMenu(
         key: _subtitleMenuKey,
         subtitleButtonKey: _subtitleButtonKey,
         onClose: _onSubtitleMenuClose,
@@ -399,36 +425,30 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         onClearSubtitle: _onClearSubtitle,
         onRemoveSubtitle: _onRemoveSubtitle,
       );
-    }
     return _cachedSubtitleMenu!;
   }
 
   // 获取缓存的音量控制，只创建一次
   VolumeControl _getVolumeControl() {
-    if (_cachedVolumeControl == null) {
-      _cachedVolumeControl = VolumeControl(
+    _cachedVolumeControl ??= VolumeControl(
         key: _volumeControlKey,
         onClose: () => setState(() => _showVolumeControl = false),
       );
-    }
     return _cachedVolumeControl!;
   }
 
   // 获取缓存的Windows播放列表面板，只创建一次
   WindowsPlayListPanel _getWindowsPlayListPanel() {
-    if (_cachedWindowsPlayListPanel == null) {
-      _cachedWindowsPlayListPanel = WindowsPlayListPanel(
+    _cachedWindowsPlayListPanel ??= WindowsPlayListPanel(
         key: _playListPanelKey,
         onNavigateBack: _handleBackPress,
       );
-    }
     return _cachedWindowsPlayListPanel!;
   }
 
   // 获取缓存的Android播放列表抽屉，只创建一次
   AndroidPlayListDrawer _getAndroidPlayListDrawer() {
-    if (_cachedAndroidPlayListDrawer == null) {
-      _cachedAndroidPlayListDrawer = AndroidPlayListDrawer(
+    _cachedAndroidPlayListDrawer ??= AndroidPlayListDrawer(
         key: _playListDrawerKey,
         onClose: () {
           setState(() {
@@ -437,18 +457,25 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         },
         onNavigateBack: _handleBackPress,
       );
-    }
     return _cachedAndroidPlayListDrawer!;
   }
 
   @override
   void dispose() {
+    debugPrint('[VideoPlayerPage] dispose called');
     _focusAttachment.detach();
     _focusNode.dispose();
     _debounceTimer?.cancel();
     _subtitleDebounceTimer?.cancel();
     
-    // 不要在这里调用 _controller.dispose()，因为播放器服务会处理
+    // 统一由 dispose() 负责释放播放器
+    // 无论是自定义返回按钮还是系统返回，最终都会走到这里
+    final playerService = PlayerService.instance;
+    if (playerService.isInitialized || playerService.controller != null) {
+      debugPrint('[VideoPlayerPage] dispose: calling stopAsyncOperations()');
+      playerService.stopAsyncOperations();
+    }
+    
     super.dispose();
   }
   
@@ -459,13 +486,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       _isDisposing = true;
     });
     
-    // 1. 停止播放器
     final playerService = ref.read(playerServiceProvider);
-    if (playerService.isInitialized) {
-      playerService.pause();
-    }
     
-    // 2. 直接更新 history 和 play queue
+    // 先更新 history 和 play queue（在播放器还没释放前）
     if (playerService.isInitialized && playerService.controller != null) {
       try {
         final position = playerService.controller!.position;
@@ -489,60 +512,61 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       }
     }
     
-    // 3. 停止所有异步操作，确保不会在widget销毁后继续执行
-    playerService.stopAsyncOperations();
-    
-    // 4. 执行返回操作
+    // 和系统手势返回一样，直接返回，由 dispose() 处理播放器释放
     if (!mounted) return;
     Navigator.of(context).pop();
   }
 
   // 处理播放队列变化
   Future<void> _handlePlayQueueChange() async {
-    if (!mounted) return;
+    debugPrint('[VideoPlayerPage] ======== _handlePlayQueueChange() CALLED ========');
+    debugPrint('[VideoPlayerPage] mounted=$mounted, _isDisposing=$_isDisposing, _isInitializing=$_isInitializing');
+    
+    if (!mounted || _isDisposing || _isInitializing) {
+      debugPrint('[VideoPlayerPage] _handlePlayQueueChange() SKIPPING - not mounted, disposing, or initializing');
+      return;
+    }
     
     try {
       final playQueueService = ref.read(playQueueServiceProvider);
       final currentPlaying = await playQueueService.getCurrentPlaying();
-      final queue = await playQueueService.getQueue();
       
-      if (!mounted) return;
-      
-      if (queue.isEmpty) {
-        // 如果队列清空，暂停播放
-        final playerService = ref.read(playerServiceProvider);
-        if (playerService.isInitialized && playerService.controller!.isPlaying) {
-          playerService.pause();
-        }
-        if (mounted) {
-          setState(() {
-            _isInitialized = false;
-          });
-        }
+      if (!mounted || _isDisposing || currentPlaying == null) {
         return;
       }
       
-      if (currentPlaying != null) {
-        // 如果当前播放项发生变化，重新初始化播放器
-        setState(() {
-          _isInitialized = false;
-        });
-        
-        // 使用播放器服务初始化播放器
-        final playerService = ref.read(playerServiceProvider);
+      final playerService = ref.read(playerServiceProvider);
+      final currentPath = playerService.currentPath;
+      
+      // 1. 检查路径是否相同
+      if (currentPath == currentPlaying.path) {
+        // 2. 如果相同，播放
+        debugPrint('[VideoPlayerPage] _handlePlayQueueChange: Same path, just playing');
+        if (playerService.isInitialized) {
+          playerService.play();
+          if (mounted) {
+            _updatePlayerState();
+          }
+        }
+      } else {
+        // 3. 如果不同，加入列表 + 播放
+        debugPrint('[VideoPlayerPage] _handlePlayQueueChange: Different path, adding to queue and playing');
         final newFileName = currentPlaying.displayName;
-        debugPrint('[VideoPlayerPage] _handlePlayQueueChange: initializing with fileName: $newFileName');
         await playerService.initialize(currentPlaying.path, ref, fileName: newFileName);
         playerService.setPlaybackSpeed(_playbackSpeed);
-        debugPrint('[VideoPlayerPage] _handlePlayQueueChange: calling play()');
-        playerService.play();
         
         // 更新当前文件名
         if (mounted) {
           setState(() {
             _currentFileName = newFileName;
-            _isInitialized = true;
           });
+        }
+        
+        // 播放
+        playerService.play();
+        
+        // 更新 UI
+        if (mounted) {
           _updatePlayerState();
         }
       }
@@ -553,92 +577,79 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   }
 
   Future<void> _initializePlayer() async {
-    if (!mounted) return;
+    debugPrint('[VideoPlayerPage] ======== _initializePlayer() CALLED ========');
+    if (!mounted) {
+      debugPrint('[VideoPlayerPage] _initializePlayer() SKIPPING - not mounted');
+      return;
+    }
+    
+    // 设置初始化标志，防止 _handlePlayQueueChange 在初始化过程中被触发
+    setState(() {
+      _isInitializing = true;
+    });
+    
+    debugPrint('[VideoPlayerPage] ======== 开始初始化播放器 ========');
     
     try {
       final settings = ref.read(settingsProvider);
       _playbackSpeed = settings.defaultPlaybackSpeed;
 
+      // 1. 添加到播放队列
       final playQueueNotifier = ref.read(playQueueProvider.notifier);
       final playQueueService = ref.read(playQueueServiceProvider);
+      final fileName = widget.fileName ?? p.basename(widget.path);
+      await playQueueNotifier.addToQueue(widget.path, fileName);
       
-      // 先检查播放队列中是否已有该视频
+      // 2. 找到刚添加的项目并设置为当前播放
       final queue = await playQueueService.getQueue();
-      final bool videoExists = queue.any((item) => item.path == widget.path);
-      
-      if (videoExists) {
-        // 如果队列中已有该视频，直接使用它
-        final existingItem = queue.firstWhere((item) => item.path == widget.path);
-        await playQueueNotifier.playItem(existingItem.id);
-      } else {
-        // 如果队列中没有该视频，则添加到队列
-        try {
-          await playQueueNotifier.addToQueue(widget.path, widget.fileName ?? p.basename(widget.path));
-          // 设置当前播放项为新添加的视频
-          final updatedQueue = await playQueueService.getQueue();
-          // 安全地查找刚添加的项目
-          final newlyAddedItem = updatedQueue.firstWhere(
-            (item) => item.path == widget.path,
-            orElse: () => updatedQueue.isNotEmpty ? updatedQueue[0] : (() { throw StateError("Queue is empty after adding item"); })(),
-          );
-          await playQueueNotifier.playItem(newlyAddedItem.id);
-        } catch (e) {
-          debugPrint('Error adding video to queue: $e');
+      PlayQueueItem? itemToPlay;
+      for (final item in queue) {
+        if (_pathsMatch(item.path, widget.path)) {
+          itemToPlay = item;
+          break;
         }
       }
       
-      if (!mounted) return;
-      
-      // 获取当前播放项
-      final currentPlaying = await playQueueService.getCurrentPlaying();
-      if (currentPlaying == null) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = false;
-          });
-        }
-        return;
+      if (itemToPlay != null) {
+        // 将我们要播放的项设置为当前播放项目
+        debugPrint('[VideoPlayerPage] Setting item as current playing: ${itemToPlay.displayName}');
+        await playQueueNotifier.playItem(itemToPlay.id);
       }
       
-      if (!mounted) return;
-      
-      // 设置当前文件名 - 先保存到本地变量，然后使用
-      final newFileName = currentPlaying.displayName;
-      
-      // 使用播放器服务初始化播放器
+      // 3. 初始化播放器，但不播放
       final playerService = ref.read(playerServiceProvider);
-      debugPrint('[VideoPlayerPage] _initializePlayer: initializing with fileName: $newFileName');
-      await playerService.initialize(currentPlaying.path, ref, fileName: newFileName);
+      debugPrint('[VideoPlayerPage] _initializePlayer: initializing with fileName: $fileName (but NOT playing yet)');
+      await playerService.initialize(widget.path, ref, fileName: fileName);
       
-      // 更新 state 中的文件名
-      if (mounted) {
-        setState(() {
-          _currentFileName = newFileName;
-        });
-      }
+      // 设置播放速度和初始位置
       playerService.setPlaybackSpeed(_playbackSpeed);
-
-      // 如果有初始位置，跳转到该位置
       if (widget.initialPosition != null) {
         playerService.seek(widget.initialPosition!);
       }
       
-      // 开始播放
-      debugPrint('[VideoPlayerPage] _initializePlayer: calling play()');
-      playerService.play();
-
+      // 更新当前文件名
       if (mounted) {
         setState(() {
-          _isInitialized = true;
+          _currentFileName = fileName;
         });
       }
-      _updatePlayerState();
+      
+      // 4. 开始播放
+      debugPrint('[VideoPlayerPage] _initializePlayer: starting playback');
+      playerService.play();
+      
+      // 更新 UI
+      if (mounted) {
+        _updatePlayerState();
+      }
     } catch (e, stackTrace) {
       debugPrint('Error initializing player: $e');
       debugPrint('Stack trace: $stackTrace');
+    } finally {
+      // 清除初始化标志
       if (mounted) {
         setState(() {
-          _isInitialized = false;
+          _isInitializing = false;
         });
       }
     }
@@ -748,7 +759,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         _hasPendingSubtitleOperation = true;
         
         // 包裹操作，执行完后重置防重复标记
-        final wrappedOperation = () async {
+        Future<void> wrappedOperation() async {
           try {
             await operation();
           } catch (e) {
@@ -758,7 +769,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
               _hasPendingSubtitleOperation = false;
             }
           }
-        };
+        }
         
         // 插队到队列最前面执行
         _operationQueue.addFirst(wrappedOperation);
@@ -1281,11 +1292,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                                   child: Consumer(
                                     builder: (context, ref, child) {
                                       final playerService = ref.watch(playerServiceProvider);
-                                      if (_isInitialized && 
-                                          playerService.isInitialized && 
-                                          playerService.controller != null &&
-                                          playerService.controller!.videoController != null) {
-                                        return VideoPlayer(playerService.controller!.videoController!);
+                                      if (playerService.isInitialized && 
+                                          playerService.controller != null) {
+                                        return VideoPlayer(playerService.controller!.videoController);
                                       } else {
                                         return const Center(
                                           child: CircularProgressIndicator(color: Colors.blue),
@@ -1556,11 +1565,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                             child: Consumer(
                               builder: (context, ref, child) {
                                 final playerService = ref.watch(playerServiceProvider);
-                                if (_isInitialized && 
-                                    playerService.isInitialized && 
-                                    playerService.controller != null &&
-                                    playerService.controller!.videoController != null) {
-                                  return VideoPlayer(playerService.controller!.videoController!);
+                                if (playerService.isInitialized && 
+                                    playerService.controller != null) {
+                                  return VideoPlayer(playerService.controller!.videoController);
                                 } else {
                                   return const Center(
                                     child: CircularProgressIndicator(color: Colors.blue),

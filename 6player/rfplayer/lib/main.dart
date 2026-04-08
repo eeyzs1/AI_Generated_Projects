@@ -9,8 +9,14 @@ import 'presentation/providers/permission_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化 fvp 库
-  fvp.registerWith();
+  // 初始化 fvp 库，启用字幕渲染和相关属性
+  fvp.registerWith(options: {
+    // 确保字幕渲染是启用的
+    'player': {
+      'subtitle': '1',
+      'cc': '1',
+    },
+  });
 
   runApp(const ProviderScope(child: AppInitializer()));
 }

@@ -9,8 +9,8 @@ import '../../providers/thumbnail_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../../data/models/play_history.dart' as ph;
 import '../../../core/utils/toast_utils.dart';
+import '../../../core/utils/real_path_utils.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../../../core/utils/content_uri_utils.dart';
 
 class ImageViewerPage extends ConsumerStatefulWidget {
   final String path;
@@ -40,8 +40,15 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
     if (!mounted) return;
     
     try {
+      // 先确保使用安全路径，避免同一个文件被保存多次
+      final safePath = await RealPathUtils.getSafePath(widget.path);
+      final pathToUse = safePath ?? widget.path;
+      
+      debugPrint('[ImageViewerPage] 原路径: ${widget.path}');
+      debugPrint('[ImageViewerPage] 安全路径: $pathToUse');
+      
       final historyRepo = ref.read(historyRepositoryProvider);
-      var history = await historyRepo.getByPath(widget.path);
+      var history = await historyRepo.getByPath(pathToUse);
       
       String extension;
       if (widget.fileName != null) {
@@ -50,15 +57,15 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         extension = ext.length > 1 ? ext.substring(1) : ext;
       } else {
         // 从 path 中提取扩展名
-        final ext = p.extension(widget.path).toLowerCase();
+        final ext = p.extension(pathToUse).toLowerCase();
         extension = ext.length > 1 ? ext.substring(1) : ext;
       }
       
       if (history == null) {
         history = ph.PlayHistory(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          path: widget.path,
-          displayName: widget.fileName ?? p.basename(widget.path),
+          path: pathToUse,
+          displayName: widget.fileName ?? p.basename(pathToUse),
           extension: extension,
           type: ph.MediaType.image,
           lastPosition: Duration.zero,
@@ -91,7 +98,7 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         }
       }
     } catch (e) {
-      // print('更新历史记录失败: $e');
+      debugPrint('[ImageViewerPage] 更新历史记录失败: $e');
     }
   }
   
@@ -99,13 +106,17 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
     if (!mounted) return;
     
     try {
+      // 先确保使用安全路径
+      final safePath = await RealPathUtils.getSafePath(widget.path);
+      final pathToUse = safePath ?? widget.path;
+      
       final thumbnailService = ref.read(thumbnailServiceProvider);
       final historyRepo = ref.read(historyRepositoryProvider);
       
-      final thumbPath = await thumbnailService.generateThumbnail(widget.path);
+      final thumbPath = await thumbnailService.generateThumbnail(pathToUse);
       
       if (thumbPath != null && mounted) {
-        var history = await historyRepo.getByPath(widget.path);
+        var history = await historyRepo.getByPath(pathToUse);
         if (history != null) {
           final updatedHistory = ph.PlayHistory(
             id: history.id,
@@ -123,7 +134,7 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         }
       }
     } catch (e) {
-      // print('生成缩略图失败: $e');
+      debugPrint('[ImageViewerPage] 生成缩略图失败: $e');
     }
   }
 
@@ -397,7 +408,6 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
     debugPrint('[ImageViewerPage] widget.bytes: ${widget.bytes != null ? '有数据' : '无数据'}');
     debugPrint('[ImageViewerPage] state.imageInfo: ${state.imageInfo != null ? '存在' : '不存在'}');
     debugPrint('[ImageViewerPage] state.imageInfo.bytes: ${state.imageInfo?.bytes != null ? '有数据' : '无数据'}');
-    debugPrint('[ImageViewerPage] 检查是否是 content URI: ${ContentUriUtils.isContentUri(state.currentPath)}');
     debugPrint('[ImageViewerPage] state.isLoading: ${state.isLoading}');
     
     // 优先使用通过 widget 传递过来的字节数据
@@ -426,50 +436,12 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
     
-    // 如果是 content URI，先尝试提取真实路径
-    String effectivePath = state.currentPath;
-    bool isContentUri = ContentUriUtils.isContentUri(state.currentPath);
-    
-    if (isContentUri) {
-      final realPath = _tryExtractRealPathFromContentUri(state.currentPath);
-      if (realPath != null) {
-        final realFile = File(realPath);
-        if (realFile.existsSync()) {
-          debugPrint('[ImageViewerPage] 真实路径文件存在，使用真实路径显示');
-          effectivePath = realPath;
-          isContentUri = false;
-        }
-      }
-    }
-    
-    // 如果没有字节数据，对于 content URI 显示错误提示
-    if (isContentUri) {
-      debugPrint('[ImageViewerPage] 是 content URI，但没有字节数据，显示错误提示');
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              '无法访问此文件',
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '请从文件浏览器重新选择此文件',
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-      );
-    } else {
-      debugPrint('[ImageViewerPage] 使用 Image.file 显示普通文件，路径: $effectivePath');
-      return Image.file(
-        File(effectivePath),
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-      );
-    }
+    // 最后使用 Image.file 显示普通文件
+    debugPrint('[ImageViewerPage] 使用 Image.file 显示普通文件，路径: ${state.currentPath}');
+    return Image.file(
+      File(state.currentPath),
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+    );
   }
 }

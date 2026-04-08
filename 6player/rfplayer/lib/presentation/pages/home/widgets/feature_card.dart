@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:fast_file_picker/fast_file_picker.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../../router/app_router.dart';
-import '../../../../core/constants/supported_formats.dart';
 
 class FeatureCard extends StatelessWidget {
   final IconData icon;

@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/video_bookmark_provider.dart';
 import '../../providers/image_bookmark_provider.dart';
+import '../../providers/thumbnail_provider.dart';
 import '../../../data/models/video_bookmark.dart';
 import '../../../core/utils/toast_utils.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -56,7 +58,7 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
                     ),
                     ...imageBookmarks.map((bookmark) {
                       return ListTile(
-                        leading: const Icon(Icons.image, color: Colors.green),
+                        leading: _buildImageThumbnail(bookmark.imagePath),
                         title: Text(bookmark.imageName),
                         subtitle: Text(
                           _formatDateTime(bookmark.createdAt),
@@ -98,6 +100,92 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
     );
   }
 
+  Widget _buildImageThumbnail(String imagePath) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final thumbnailAsync = ref.watch(cachedThumbnailProvider(imagePath));
+
+        return thumbnailAsync.when(
+          data: (thumbPath) {
+            if (thumbPath != null && File(thumbPath).existsSync()) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.file(
+                  File(thumbPath),
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                ),
+              );
+            } else {
+              return _buildPlaceholderIcon(Icons.image, Colors.green);
+            }
+          },
+          loading: () => _buildPlaceholderLoading(),
+          error: (_, _) => _buildPlaceholderIcon(Icons.image, Colors.green),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoThumbnail(String videoPath) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final thumbnailAsync = ref.watch(cachedThumbnailProvider(videoPath));
+
+        return thumbnailAsync.when(
+          data: (thumbPath) {
+            if (thumbPath != null && File(thumbPath).existsSync()) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.file(
+                  File(thumbPath),
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                ),
+              );
+            } else {
+              return _buildPlaceholderIcon(Icons.video_file, Colors.blue);
+            }
+          },
+          loading: () => _buildPlaceholderLoading(),
+          error: (_, _) => _buildPlaceholderIcon(Icons.video_file, Colors.blue),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlaceholderIcon(IconData icon, Color color) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Icon(icon, size: 28, color: color),
+    );
+  }
+
+  Widget _buildPlaceholderLoading() {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildVideoBookmarkList(List<VideoBookmark> videoBookmarks) {
     final loc = AppLocalizations.of(context)!;
     final groupedBookmarks = <String, List<VideoBookmark>>{};
@@ -111,9 +199,10 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
     return groupedBookmarks.entries.map((entry) {
       final bookmarks = entry.value;
       final videoName = bookmarks.first.videoName;
+      final videoPath = entry.key;
 
       return ExpansionTile(
-        leading: const Icon(Icons.video_file, color: Colors.blue),
+        leading: _buildVideoThumbnail(videoPath),
         title: Text(videoName),
         subtitle: Text('${bookmarks.length} ${loc.bookmarksCount}'),
         children: bookmarks.map((bookmark) {

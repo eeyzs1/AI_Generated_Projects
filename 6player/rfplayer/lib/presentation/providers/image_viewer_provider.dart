@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:saf_stream/saf_stream.dart';
 import '../../core/extensions/string_extensions.dart';
-import '../../core/utils/content_uri_utils.dart';
+import '../../core/utils/real_path_utils.dart';
 
 class ImageInfo {
   final String fileName;
@@ -112,19 +112,35 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
   ) {
     _initialize();
   }
+  
+  // 确保路径总是真实路径
+  Future<String> _ensureRealPath(String path) async {
+    if (RealPathUtils.isContentUri(path)) {
+      final safePath = await RealPathUtils.getSafePath(path);
+      if (safePath != null) {
+        return safePath;
+      }
+    }
+    return path;
+  }
 
   Future<void> _initialize() async {
+    // 先确保使用真实路径
+    final realPath = await _ensureRealPath(state.currentPath);
+    if (realPath != state.currentPath) {
+      debugPrint('[ImageViewerProvider] 转换路径为真实路径: $realPath');
+      state = state.copyWith(
+        currentPath: realPath,
+        imagePaths: [realPath],
+      );
+    }
+    
     await _loadDirectoryImages();
     await _loadImageInfo();
     state = state.copyWith(isLoading: false);
   }
 
   Future<void> _loadDirectoryImages() async {
-    if (ContentUriUtils.isContentUri(state.currentPath)) {
-      // 对于 content URI，不加载目录中的其他图片
-      return;
-    }
-    
     final directory = p.dirname(state.currentPath);
     final dir = Directory(directory);
     
@@ -223,39 +239,18 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
     try {
       Uint8List bytes;
       String fileName;
-      String effectivePath = state.currentPath;
-      bool isContentUri = ContentUriUtils.isContentUri(state.currentPath);
-      
-      // 如果是 content URI，先尝试提取真实路径（即使有 initialBytes 也这么做）
-      String? realPath;
-      if (isContentUri) {
-        realPath = _tryExtractRealPathFromContentUri(state.currentPath);
-        if (realPath != null) {
-          final realFile = File(realPath);
-          if (await realFile.exists()) {
-            debugPrint('[ImageViewerProvider] 真实路径文件存在，使用真实路径');
-            effectivePath = realPath;
-            isContentUri = false;
-          } else {
-            debugPrint('[ImageViewerProvider] 真实路径文件不存在，继续使用 content URI');
-          }
-        }
-      }
+      final effectivePath = state.currentPath;
       
       // 优先使用从路由传递过来的 initialBytes
       if (state.initialBytes != null) {
         debugPrint('[ImageViewerProvider] 使用 initialBytes');
         bytes = state.initialBytes!;
         fileName = state.customFileName ?? p.basename(effectivePath);
-      } else if (isContentUri) {
-        debugPrint('[ImageViewerProvider] 检测到 content URI，使用 saf_stream 读取');
-        bytes = await _safStream.readFileBytes(effectivePath);
-        fileName = state.customFileName ?? p.basename(effectivePath);
       } else {
         debugPrint('[ImageViewerProvider] 处理普通文件');
         final file = File(effectivePath);
         if (!await file.exists()) {
-          debugPrint('[ImageViewerProvider] 普通文件不存在');
+          debugPrint('[ImageViewerProvider] 文件不存在');
           return;
         }
         bytes = await file.readAsBytes();
@@ -267,17 +262,9 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
       final image = await decodeImageFromList(bytes);
       final format = _inferImageFormat(bytes, fileName);
       
-      int fileSize;
-      DateTime modifiedAt;
-      
-      if (isContentUri) {
-        fileSize = bytes.length;
-        modifiedAt = DateTime.now();
-      } else {
-        final stat = await File(effectivePath).stat();
-        fileSize = stat.size;
-        modifiedAt = stat.modified;
-      }
+      final stat = await File(effectivePath).stat();
+      final fileSize = stat.size;
+      final modifiedAt = stat.modified;
       
       state = state.copyWith(
         imageInfo: ImageInfo(
@@ -304,8 +291,15 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
 
   void navigateToImage(int index) {
     if (index >= 0 && index < state.imagePaths.length) {
+      _navigateToImageAsync(index);
+    }
+  }
+  
+  Future<void> _navigateToImageAsync(int index) async {
+    if (index >= 0 && index < state.imagePaths.length) {
+      final newPath = await _ensureRealPath(state.imagePaths[index]);
       state = state.copyWith(
-        currentPath: state.imagePaths[index],
+        currentPath: newPath,
         currentIndex: index,
         rotation: 0,
         isFlippedHorizontal: false,
@@ -314,7 +308,7 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
         imageInfo: null,
         isLoading: true,
       );
-      _loadImageInfo();
+      await _loadImageInfo();
       state = state.copyWith(isLoading: false);
     }
   }

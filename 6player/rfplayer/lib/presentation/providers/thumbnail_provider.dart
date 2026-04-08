@@ -1,8 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/services/thumbnail_service.dart';
 import '../../data/models/play_history.dart';
-import 'database_provider.dart';
 
 /// ThumbnailService 的单例 Provider
 final thumbnailServiceProvider = Provider<ThumbnailService>((ref) {

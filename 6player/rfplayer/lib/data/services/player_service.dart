@@ -17,41 +17,54 @@ class PlayerService extends ChangeNotifier {
   PlayerService._();
   
   Future<void> initialize(String path, WidgetRef ref, {String? fileName}) async {
-    if (_currentPath == path && _isInitialized) {
-      // 如果已经初始化并且路径相同，直接返回
+    debugPrint('[PlayerService] initialize called with path: $path, fileName: $fileName');
+    debugPrint('[PlayerService] Current path before: $_currentPath, isInitialized: $_isInitialized');
+    
+    // 强制完全重置，无论路径是否相同
+    // 处理旧的控制器
+    if (_controller != null) {
+      debugPrint('[PlayerService] Disposing old controller');
+      // 先暂停再释放，确保旧播放器完全停止
+      try {
+        _controller!.pause();
+        debugPrint('[PlayerService] Old controller paused');
+        // 确保视频控制器的 dispose 能够完全停止播放
+        await Future.delayed(const Duration(milliseconds: 100));
+      } catch (e) {
+        debugPrint('[PlayerService] Error pausing old controller: $e');
+      }
+      _controller!.dispose();
+      _controller = null;
+      // 再给一点时间确保 dispose 完成
+      await Future.delayed(const Duration(milliseconds: 50));
+      debugPrint('[PlayerService] Old controller disposed');
+    }
+    
+    _isInitialized = false;
+    _currentPath = null;
+    _currentFileName = null;
+    
+    // 使用 RealPathUtils 获取安全的路径（永远不会是 content URI）
+    final pathToUse = await RealPathUtils.getSafePath(path);
+    
+    if (pathToUse == null) {
+      debugPrint('[PlayerService] Error: Could not get safe path for: $path');
+      // 如果无法获取安全路径，直接返回，不初始化播放器
       return;
     }
     
-    // 处理旧的控制器
-    if (_controller != null) {
-      _controller!.dispose();
-    }
-    
-    // 尝试获取真实路径
-    String pathToUse = path;
-    if (path.startsWith('content://')) {
-      debugPrint('[PlayerService] 原始路径是 content URI，尝试获取真实路径...');
-      final permissionState = ref.read(permissionProvider);
-      if (permissionState.hasStoragePermission) {
-        debugPrint('[PlayerService] 有存储权限，使用原生通道尝试获取真实路径...');
-        final realPathFromNative = await RealPathUtils.getRealPath(path);
-        if (realPathFromNative != null) {
-          final realFile = File(realPathFromNative);
-          if (await realFile.exists()) {
-            pathToUse = realPathFromNative;
-            debugPrint('[PlayerService] 原生通道获取到真实路径并存在: $pathToUse');
-          }
-        }
-      }
-    }
+    debugPrint('[PlayerService] Using safe path: $pathToUse');
     
     // 创建新的控制器
+    debugPrint('[PlayerService] Creating new controller for path: $pathToUse');
     _controller = MyVideoPlayerController(pathToUse, ref, fileName: fileName);
     await _controller!.initialize();
     
     _currentPath = pathToUse;
     _currentFileName = fileName;
     _isInitialized = true;
+    debugPrint('[PlayerService] initialize completed, currentPath: $_currentPath');
+    notifyStateChanged();
   }
   
   void play() {
@@ -100,6 +113,14 @@ class PlayerService extends ChangeNotifier {
   // 停止所有异步操作
   void stopAsyncOperations() {
     if (_controller != null) {
+      debugPrint('[PlayerService] stopAsyncOperations called');
+      // 先暂停再释放，确保播放器完全停止
+      try {
+        _controller!.pause();
+        debugPrint('[PlayerService] Controller paused');
+      } catch (e) {
+        debugPrint('[PlayerService] Error pausing controller: $e');
+      }
       // 取消定时器和移除监听器
       // 由于这些操作在MyVideoPlayerController的dispose方法中已经处理，
       // 这里我们直接调用dispose来确保所有资源都被正确释放
@@ -107,6 +128,8 @@ class PlayerService extends ChangeNotifier {
       _controller = null;
       _isInitialized = false;
       _currentPath = null;
+      _currentFileName = null;
+      debugPrint('[PlayerService] stopAsyncOperations completed');
     }
   }
   
