@@ -1,15 +1,15 @@
-"""
-Vector Index - Unified interface for all vector indexing algorithms.
-"""
 
 from enum import Enum
-from typing import Any, Tuple, Optional
+from typing import Any, Tuple, Optional, Union, Dict, List
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
+import contextlib
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class IndexType(Enum):
-    """Supported index types."""
     FLAT_L2 = "flat_l2"
     FLAT_IP = "flat_ip"
     HNSW = "hnsw"
@@ -22,92 +22,79 @@ class IndexType(Enum):
 
 
 class Implementation(Enum):
-    """Supported implementations."""
     CPP = "cpp"
     RUST = "rust"
+    CPP_NANOBIND = "cpp_nanobind"
 
 
 class VectorIndex:
-    """
-    Unified vector index interface.
-    
-    This class provides a single interface to all supported vector indexing
-    algorithms, implemented in either C++ or Rust.
-    """
-    
     def __init__(
         self,
         index_type: IndexType,
         dimension: int,
-        implementation: Implementation = Implementation.CPP,
+        implementation: Implementation = Implementation.CPP_NANOBIND,
         **kwargs: Any
     ):
-        """
-        Create a new vector index.
-        
-        Args:
-            index_type: Type of index to create
-            dimension: Dimension of the vectors
-            implementation: Implementation to use (C++ or Rust)
-            **kwargs: Additional algorithm-specific parameters
-        """
-        self.index_type = index_type
-        self.dimension = dimension
-        self.implementation = implementation
-        self._index = None
+        self.index_type: IndexType = index_type
+        self.dimension: int = dimension
+        self.implementation: Implementation = implementation
+        self._index: Optional[Any] = None
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._initialize_executor()
         self._initialize_index(**kwargs)
     
-    def _initialize_index(self, **kwargs: Any):
-        """Initialize the underlying index implementation."""
+    def _initialize_executor(self) -> None:
+        self._executor = ThreadPoolExecutor(max_workers=4)
+    
+    def _initialize_index(self, **kwargs: Any) -> None:
         if self.implementation == Implementation.CPP:
             self._init_cpp_index(**kwargs)
+        elif self.implementation == Implementation.CPP_NANOBIND:
+            self._init_cpp_nanobind_index(**kwargs)
         elif self.implementation == Implementation.RUST:
             self._init_rust_index(**kwargs)
         else:
             raise ValueError(f"Unknown implementation: {self.implementation}")
     
-    def _init_cpp_index(self, **kwargs: Any):
-        """Initialize C++ implementation."""
+    def _init_cpp_index(self, **kwargs: Any) -> None:
         try:
             if self.index_type == IndexType.FLAT_L2:
-                from .cpp._flat import IndexFlatL2
-                self._index = IndexFlatL2(self.dimension)
+                from .cpp import _flat
+                self._index = _flat.IndexFlatL2(self.dimension)
             elif self.index_type == IndexType.FLAT_IP:
-                from .cpp._flat_ip import IndexFlatIP
-                self._index = IndexFlatIP(self.dimension)
+                from .cpp import _flat_ip
+                self._index = _flat_ip.IndexFlatIP(self.dimension)
             elif self.index_type == IndexType.IVF:
-                from .cpp._ivf import IndexIVF
+                from .cpp import vectordb_ivf
                 nlist = kwargs.get('nlist', 100)
-                self._index = IndexIVF(self.dimension, nlist)
+                self._index = vectordb_ivf.IndexIVF(self.dimension, nlist)
             elif self.index_type == IndexType.HNSW:
-                from .cpp._hnsw import IndexHNSW
+                from .cpp import vectordb_hnsw
                 M = kwargs.get('M', 16)
                 ef_construction = kwargs.get('ef_construction', 200)
-                self._index = IndexHNSW(self.dimension, M, ef_construction)
+                self._index = vectordb_hnsw.IndexHNSW(self.dimension, M, ef_construction)
             elif self.index_type == IndexType.PQ:
-                from .cpp._pq import IndexPQ
+                from .cpp import vectordb_pq
                 M = kwargs.get('M', 8)
                 nbits = kwargs.get('nbits', 8)
-                self._index = IndexPQ(self.dimension, M, nbits)
+                self._index = vectordb_pq.IndexPQ(self.dimension, M, nbits)
             elif self.index_type == IndexType.LSH:
-                from .cpp._lsh import IndexLSH
+                from .cpp import vectordb_lsh
                 num_hash_tables = kwargs.get('num_hash_tables', 8)
                 num_hash_functions = kwargs.get('num_hash_functions', 4)
                 r = kwargs.get('r', 1.0)
-                self._index = IndexLSH(self.dimension, num_hash_tables, num_hash_functions, r)
+                self._index = vectordb_lsh.IndexLSH(self.dimension, num_hash_tables, num_hash_functions, r)
             elif self.index_type == IndexType.KD_TREE:
-                from .cpp._kdtree import IndexKDTree
-                self._index = IndexKDTree(self.dimension)
+                from .cpp import vectordb_kdtree
+                self._index = vectordb_kdtree.IndexKDTree(self.dimension)
             elif self.index_type == IndexType.BALL_TREE:
-                from .cpp._balltree import IndexBallTree
+                from .cpp import vectordb_balltree
                 leaf_size = kwargs.get('leaf_size', 40)
-                self._index = IndexBallTree(self.dimension, leaf_size)
+                self._index = vectordb_balltree.IndexBallTree(self.dimension, leaf_size)
             elif self.index_type == IndexType.ANNOY:
-                from .cpp._annoy import IndexAnnoy
+                from .cpp import vectordb_annoy
                 n_trees = kwargs.get('n_trees', 10)
-                search_k = kwargs.get('search_k', 0)
-                leaf_size = kwargs.get('leaf_size', 40)
-                self._index = IndexAnnoy(self.dimension, n_trees, search_k, leaf_size)
+                self._index = vectordb_annoy.IndexAnnoy(self.dimension, n_trees)
             else:
                 raise NotImplementedError(
                     f"Index type {self.index_type} not yet implemented in C++"
@@ -118,15 +105,64 @@ class VectorIndex:
                 "Make sure the C++ extensions are compiled."
             )
     
-    def _init_rust_index(self, **kwargs: Any):
-        """Initialize Rust implementation."""
+    def _init_cpp_nanobind_index(self, **kwargs: Any) -> None:
         try:
             if self.index_type == IndexType.FLAT_L2:
-                from .rust._flat import FlatIndex
-                self._index = FlatIndex(self.dimension)
+                from .cpp import _flat_nanobind
+                self._index = _flat_nanobind.IndexFlatL2(self.dimension)
             elif self.index_type == IndexType.FLAT_IP:
-                from .rust._flat_ip import FlatIPIndex
-                self._index = FlatIPIndex(self.dimension)
+                from .cpp import _flat_ip_nanobind
+                self._index = _flat_ip_nanobind.IndexFlatIP(self.dimension)
+            elif self.index_type == IndexType.IVF:
+                from .cpp import _ivf_nanobind
+                nlist = kwargs.get('nlist', 100)
+                self._index = _ivf_nanobind.IndexIVF(self.dimension, nlist)
+            elif self.index_type == IndexType.HNSW:
+                from .cpp import _hnsw_nanobind
+                M = kwargs.get('M', 16)
+                ef_construction = kwargs.get('ef_construction', 200)
+                self._index = _hnsw_nanobind.IndexHNSW(self.dimension, M, ef_construction)
+            elif self.index_type == IndexType.PQ:
+                from .cpp import _pq_nanobind
+                M = kwargs.get('M', 8)
+                nbits = kwargs.get('nbits', 8)
+                self._index = _pq_nanobind.IndexPQ(self.dimension, M, nbits)
+            elif self.index_type == IndexType.LSH:
+                from .cpp import _lsh_nanobind
+                num_hash_tables = kwargs.get('num_hash_tables', 8)
+                num_hash_functions = kwargs.get('num_hash_functions', 4)
+                r = kwargs.get('r', 1.0)
+                self._index = _lsh_nanobind.IndexLSH(self.dimension, num_hash_tables, num_hash_functions, r)
+            elif self.index_type == IndexType.KD_TREE:
+                from .cpp import _kdtree_nanobind
+                leaf_size = kwargs.get('leaf_size', 40)
+                self._index = _kdtree_nanobind.IndexKDTree(self.dimension, leaf_size)
+            elif self.index_type == IndexType.BALL_TREE:
+                from .cpp import _balltree_nanobind
+                leaf_size = kwargs.get('leaf_size', 40)
+                self._index = _balltree_nanobind.IndexBallTree(self.dimension, leaf_size)
+            elif self.index_type == IndexType.ANNOY:
+                from .cpp import _annoy_nanobind
+                n_trees = kwargs.get('n_trees', 10)
+                self._index = _annoy_nanobind.IndexAnnoy(self.dimension, n_trees)
+            else:
+                raise NotImplementedError(
+                    f"Index type {self.index_type} not yet implemented in C++ nanobind"
+                )
+        except ImportError as e:
+            raise ImportError(
+                f"Failed to import C++ nanobind implementation: {e}. "
+                "Make sure the C++ nanobind extensions are compiled."
+            )
+    
+    def _init_rust_index(self, **kwargs: Any) -> None:
+        try:
+            if self.index_type == IndexType.FLAT_L2:
+                from .rust import _flat
+                self._index = _flat.FlatIndex(self.dimension)
+            elif self.index_type == IndexType.FLAT_IP:
+                from .rust import _flat_ip
+                self._index = _flat_ip.FlatIPIndex(self.dimension)
             else:
                 raise NotImplementedError(
                     f"Index type {self.index_type} not yet implemented in Rust"
@@ -137,13 +173,7 @@ class VectorIndex:
                 "Make sure the Rust extensions are compiled."
             )
     
-    def train(self, vectors: np.ndarray) -&gt; None:
-        """
-        Train the index (for algorithms that require training, like IVF).
-        
-        Args:
-            vectors: 2D array of training vectors
-        """
+    def train(self, vectors: NDArray[np.float32]) -> None:
         if vectors.ndim != 2:
             raise ValueError("Vectors must be a 2D array")
         if vectors.shape[1] != self.dimension:
@@ -155,13 +185,15 @@ class VectorIndex:
         if hasattr(self._index, 'train'):
             self._index.train(vectors)
     
-    def add(self, vectors: np.ndarray) -&gt; None:
-        """
-        Add vectors to the index.
-        
-        Args:
-            vectors: 2D array of vectors with shape (n_vectors, dimension)
-        """
+    async def train_async(self, vectors: NDArray[np.float32]) -> None:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor,
+            self.train,
+            vectors
+        )
+    
+    def add(self, vectors: NDArray[np.float32]) -> None:
         if vectors.ndim != 2:
             raise ValueError("Vectors must be a 2D array")
         if vectors.shape[1] != self.dimension:
@@ -175,51 +207,31 @@ class VectorIndex:
         else:
             self._index.add(vectors)
     
-    def set_nprobe(self, nprobe: int) -&gt; None:
-        """
-        Set the number of clusters to probe during search (for IVF only).
-        
-        Args:
-            nprobe: Number of clusters to probe
-        """
+    async def add_async(self, vectors: NDArray[np.float32]) -> None:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor,
+            self.add,
+            vectors
+        )
+    
+    def set_nprobe(self, nprobe: int) -> None:
         if hasattr(self._index, 'set_nprobe'):
             self._index.set_nprobe(nprobe)
     
-    def set_ef_search(self, ef: int) -&gt; None:
-        """
-        Set the size of the dynamic candidate list during search (for HNSW only).
-        
-        Args:
-            ef: Size of the candidate list
-        """
+    def set_ef_search(self, ef: int) -> None:
         if hasattr(self._index, 'set_ef_search'):
             self._index.set_ef_search(ef)
     
-    def set_search_k(self, search_k: int) -&gt; None:
-        """
-        Set the number of nodes to inspect during search (for Annoy only).
-        
-        Args:
-            search_k: Number of nodes to inspect
-        """
+    def set_search_k(self, search_k: int) -> None:
         if hasattr(self._index, 'set_search_k'):
             self._index.set_search_k(search_k)
     
     def search(
         self,
-        queries: np.ndarray,
+        queries: NDArray[np.float32],
         k: int
-    ) -&gt; Tuple[np.ndarray, np.ndarray]:
-        """
-        Search for nearest neighbors.
-        
-        Args:
-            queries: 2D array of query vectors with shape (n_queries, dimension)
-            k: Number of neighbors to return
-        
-        Returns:
-            Tuple of (distances, labels) with shapes (n_queries, k)
-        """
+    ) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
         if queries.ndim != 2:
             raise ValueError("Queries must be a 2D array")
         if queries.shape[1] != self.dimension:
@@ -228,25 +240,24 @@ class VectorIndex:
                 f"got {queries.shape[1]}"
             )
         
-        # 先检查 C++ 绑定的现代接口 (搜索一批查询)
         if hasattr(self._index, 'search') and (
             self.index_type == IndexType.FLAT_L2 or 
-            self.index_type == IndexType.FLAT_IP
+            self.index_type == IndexType.FLAT_IP or
+            self.implementation == Implementation.CPP_NANOBIND
         ):
             distances, labels = self._index.search(queries, k)
             return np.array(distances), np.array(labels)
         
-        # 检查 Rust 绑定接口
         if hasattr(self._index, 'search_batch_buf'):
-            labels, distances = self._index.search_batch_buf(queries, k)
+            distances, labels = self._index.search_batch_buf(queries, k)
             return np.array(distances), np.array(labels)
         elif hasattr(self._index, 'search'):
             if queries.shape[0] == 1:
                 distances, labels = self._index.search(queries[0], k)
                 return np.array([distances]), np.array([labels])
             else:
-                all_distances = []
-                all_labels = []
+                all_distances: List[List[float]] = []
+                all_labels: List[List[int]] = []
                 for query in queries:
                     dist, lbl = self._index.search(query, k)
                     all_distances.append(dist)
@@ -255,8 +266,20 @@ class VectorIndex:
         else:
             raise NotImplementedError("Search not implemented for this index")
     
-    def size(self) -&gt; int:
-        """Get the number of vectors in the index."""
+    async def search_async(
+        self,
+        queries: NDArray[np.float32],
+        k: int
+    ) -> Tuple[NDArray[np.float32], NDArray[np.int64]]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor,
+            self.search,
+            queries,
+            k
+        )
+    
+    def size(self) -> int:
         if hasattr(self._index, 'ntotal'):
             return self._index.ntotal
         elif hasattr(self._index, 'size'):
@@ -264,29 +287,27 @@ class VectorIndex:
         else:
             raise NotImplementedError("Size not available for this index")
     
-    def get_dimension(self) -&gt; int:
-        """Get the dimension of the vectors."""
+    def get_dimension(self) -> int:
         return self.dimension
+    
+    def close(self) -> None:
+        if self._executor:
+            self._executor.shutdown(wait=False)
+    
+    def __enter__(self) -> 'VectorIndex':
+        return self
+    
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
 
 def create_index(
     index_type: str,
     dimension: int,
-    implementation: str = "cpp",
+    implementation: str = "cpp_nanobind",
     **kwargs: Any
-) -&gt; VectorIndex:
-    """
-    Convenience function to create a vector index.
-    
-    Args:
-        index_type: Type of index as string
-        dimension: Dimension of the vectors
-        implementation: Implementation as string ("cpp" or "rust")
-        **kwargs: Additional algorithm-specific parameters
-    
-    Returns:
-        VectorIndex instance
-    """
+) -> VectorIndex:
     idx_type = IndexType(index_type.lower())
     impl = Implementation(implementation.lower())
     return VectorIndex(idx_type, dimension, impl, **kwargs)
+

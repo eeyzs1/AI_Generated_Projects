@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 pyo3 = { version = "0.26", features = ["extension-module"] }
-core = { path = "../core" }
+core = { path = "../core", features = ["simd"] }
 rand = "0.8"
+ndarray = "0.16"
 
 [lib]
 name = "pq"

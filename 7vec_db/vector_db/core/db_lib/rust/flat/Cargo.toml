@@ -11,4 +11,8 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.26", features = ["extension-module"] }
 rayon = "1.10.0"
 num_cpus = "1.16.0"
-core = { path = "../core" }
+vectordb_core = { path = "../core", package = "core", features = ["simd"] }
+ndarray = "0.16"
+
+[dev-dependencies]
+rand = "0.8"

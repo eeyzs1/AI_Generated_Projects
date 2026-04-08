@@ -9,6 +9,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <cmath>
+
+#ifdef USE_OPENBLAS
+extern "C" {
+#include <cblas.h>
+}
+#endif
 
 namespace vectordb {
 
@@ -17,7 +24,33 @@ namespace distance {
 inline float compute_l2_distance(const float* query, const float* vec, size_t dim) {
     float dist = 0.0f;
 
-#ifdef __AVX2__
+#ifdef __AVX512F__
+    if (dim >= 16) {
+        size_t i = 0;
+        __m512 sum = _mm512_setzero_ps();
+
+        size_t end = dim - 15;
+        while (i < end) {
+            __m512 q = _mm512_loadu_ps(query + i);
+            __m512 v = _mm512_loadu_ps(vec + i);
+            __m512 diff = _mm512_sub_ps(q, v);
+            sum = _mm512_fmadd_ps(diff, diff, sum);
+            i += 16;
+        }
+
+        dist = _mm512_reduce_add_ps(sum);
+
+        for (; i < dim; ++i) {
+            float diff = query[i] - vec[i];
+            dist += diff * diff;
+        }
+    } else {
+        for (size_t i = 0; i < dim; ++i) {
+            float diff = query[i] - vec[i];
+            dist += diff * diff;
+        }
+    }
+#elif defined(__AVX2__)
     if (dim >= 8) {
         size_t i = 0;
         __m256 sum = _mm256_setzero_ps();
@@ -60,7 +93,30 @@ inline float compute_l2_distance(const float* query, const float* vec, size_t di
 inline float compute_ip_distance(const float* query, const float* vec, size_t dim) {
     float dist = 0.0f;
 
-#ifdef __AVX2__
+#ifdef __AVX512F__
+    if (dim >= 16) {
+        size_t i = 0;
+        __m512 sum = _mm512_setzero_ps();
+
+        size_t end = dim - 15;
+        while (i < end) {
+            __m512 q = _mm512_loadu_ps(query + i);
+            __m512 v = _mm512_loadu_ps(vec + i);
+            sum = _mm512_fmadd_ps(q, v, sum);
+            i += 16;
+        }
+
+        dist = _mm512_reduce_add_ps(sum);
+
+        for (; i < dim; ++i) {
+            dist += query[i] * vec[i];
+        }
+    } else {
+        for (size_t i = 0; i < dim; ++i) {
+            dist += query[i] * vec[i];
+        }
+    }
+#elif defined(__AVX2__)
     if (dim >= 8) {
         size_t i = 0;
         __m256 sum = _mm256_setzero_ps();
@@ -93,9 +149,48 @@ inline float compute_ip_distance(const float* query, const float* vec, size_t di
     }
 #endif
 
-    return -dist;
+    return dist;
 }
 
+#ifdef USE_OPENBLAS
+inline void compute_batch_distances_l2(float* distances, const float* queries, size_t nq,
+                                        const float* vectors, size_t nv, size_t dim) {
+    for (size_t i = 0; i < nq; ++i) {
+        for (size_t j = 0; j < nv; ++j) {
+            float dot = cblas_sdot(dim, queries + i * dim, 1, vectors + j * dim, 1);
+            float norm_q = cblas_sdot(dim, queries + i * dim, 1, queries + i * dim, 1);
+            float norm_v = cblas_sdot(dim, vectors + j * dim, 1, vectors + j * dim, 1);
+            distances[i * nv + j] = norm_q + norm_v - 2.0f * dot;
+        }
+    }
+}
+
+inline void compute_batch_distances_ip(float* distances, const float* queries, size_t nq,
+                                        const float* vectors, size_t nv, size_t dim) {
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, nq, nv, dim,
+                 -1.0f, queries, dim, vectors, dim, 0.0f, distances, nv);
+}
+#endif
+
+}
+
+inline void normalize_vector(float* vec, size_t dim) {
+    float norm = 0.0f;
+    for (size_t i = 0; i < dim; ++i) {
+        norm += vec[i] * vec[i];
+    }
+    norm = std::sqrt(norm);
+    if (norm > 1e-6f) {
+        for (size_t i = 0; i < dim; ++i) {
+            vec[i] /= norm;
+        }
+    }
+}
+
+inline void normalize_vectors(float* vectors, size_t num_vectors, size_t dim) {
+    for (size_t i = 0; i < num_vectors; ++i) {
+        normalize_vector(vectors + i * dim, dim);
+    }
 }
 
 class VectorStorage {
@@ -105,6 +200,18 @@ protected:
     size_t d;
     size_t ntotal;
     bool transposed;
+
+    void transpose() {
+        if (ntotal == 0 || d == 0) return;
+        
+        xb_transposed.resize(ntotal * d);
+        for (size_t i = 0; i < ntotal; ++i) {
+            for (size_t j = 0; j < d; ++j) {
+                xb_transposed[j * ntotal + i] = xb[i * d + j];
+            }
+        }
+        transposed = true;
+    }
 
 public:
     VectorStorage(size_t dimension) 
@@ -125,11 +232,40 @@ public:
         xb.resize(old_size + n * d);
         std::memcpy(xb.data() + old_size, x, n * d * sizeof(float));
         ntotal += n;
+        
+        if (transposed) {
+            transposed = false;
+            xb_transposed.clear();
+        }
     }
 
     const float* data() const { return xb.data(); }
+    const float* transposed_data() const { 
+        if (!transposed) {
+            const_cast<VectorStorage*>(this)->transpose();
+        }
+        return xb_transposed.data(); 
+    }
+    bool is_transposed() const { return transposed; }
     size_t get_ntotal() const { return ntotal; }
     size_t get_dimension() const { return d; }
+    
+    void clear_transposed() {
+        transposed = false;
+        xb_transposed.clear();
+    }
+};
+
+class IndexInterface {
+public:
+    virtual ~IndexInterface() = default;
+    
+    virtual void add(size_t n, const float* x) = 0;
+    virtual void search(size_t n, const float* x, size_t k, float* distances, size_t* labels) const = 0;
+    
+    virtual void train(size_t n, const float* x) {}
+    virtual size_t get_ntotal() const = 0;
+    virtual size_t get_dimension() const = 0;
 };
 
 }

@@ -8,6 +8,12 @@ pyo3 = { version = "0.26", features = ["extension-module"] }
 rayon = "1.10"
 num_cpus = "1.16"
 rand = "0.8"
+ndarray = "0.16"
+
+[features]
+default = ["simd"]
+simd = []
+avx512 = []
 
 [lib]
 name = "core"
