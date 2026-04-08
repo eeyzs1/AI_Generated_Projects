@@ -1,11 +1,11 @@
 #include "flat.h"
-#include &lt;stdexcept&gt;
-#include &lt;thread&gt;
-#include &lt;vector&gt;
-#include &lt;algorithm&gt;
-#include &lt;execution&gt;
-#include &lt;numeric&gt;
-#include &lt;memory&gt;
+#include <stdexcept>
+#include <thread>
+#include <vector>
+#include <algorithm>
+#include <execution>
+#include <numeric>
+#include <memory>
 
 namespace vectordb {
 namespace algorithms {
@@ -18,12 +18,12 @@ void IndexFlatL2::add(size_t n, const float* x) {
 
 inline void IndexFlatL2::compute_batch_distances_transposed(const float* query, size_t start_idx, size_t batch_size, float* distances) const {
     #ifdef __AVX2__
-    for (size_t vec_offset = 0; vec_offset &lt; batch_size; vec_offset += 8) {
+    for (size_t vec_offset = 0; vec_offset < batch_size; vec_offset += 8) {
         __m256 dist_vec = _mm256_setzero_ps();
         const float* base_ptr = transposed_data() + start_idx + vec_offset;
 
         size_t dim_idx = 0;
-        for (; dim_idx + 7 &lt; d; dim_idx += 8) {
+        for (; dim_idx + 7 < d; dim_idx += 8) {
             __builtin_prefetch(base_ptr + (dim_idx + 8) * ntotal, 0, 3);
             __builtin_prefetch(base_ptr + (dim_idx + 16) * ntotal, 0, 3);
 
@@ -68,7 +68,7 @@ inline void IndexFlatL2::compute_batch_distances_transposed(const float* query, 
             dist_vec = _mm256_fmadd_ps(diff7, diff7, dist_vec);
         }
 
-        for (; dim_idx &lt; d; ++dim_idx) {
+        for (; dim_idx < d; ++dim_idx) {
             __m256 q_broadcast = _mm256_set1_ps(query[dim_idx]);
             __m256 v_vals = _mm256_loadu_ps(base_ptr + dim_idx * ntotal);
             __m256 diff = _mm256_sub_ps(q_broadcast, v_vals);
@@ -78,9 +78,9 @@ inline void IndexFlatL2::compute_batch_distances_transposed(const float* query, 
         _mm256_storeu_ps(distances + vec_offset, dist_vec);
     }
     #else
-    for (size_t i = 0; i &lt; batch_size; ++i) {
+    for (size_t i = 0; i < batch_size; ++i) {
         float dist = 0.0f;
-        for (size_t dim_idx = 0; dim_idx &lt; d; ++dim_idx) {
+        for (size_t dim_idx = 0; dim_idx < d; ++dim_idx) {
             float diff = query[dim_idx] - transposed_data()[dim_idx * ntotal + start_idx + i];
             dist += diff * diff;
         }
@@ -90,7 +90,7 @@ inline void IndexFlatL2::compute_batch_distances_transposed(const float* query, 
 }
 
 inline void IndexFlatL2::compute_batch_distances(const float* query, const float* vecs, size_t batch_size, size_t dim, float* distances) const {
-    for (size_t i = 0; i &lt; batch_size; ++i) {
+    for (size_t i = 0; i < batch_size; ++i) {
         distances[i] = distance::compute_l2_distance(query, vecs + i * dim, dim);
     }
 }
@@ -99,40 +99,40 @@ void IndexFlatL2::search_single(const float* query, size_t k, float* distances, 
     float top_distances[1024];
     size_t top_labels[1024];
 
-    for (size_t i = 0; i &lt; k; ++i) {
-        top_distances[i] = std::numeric_limits&lt;float&gt;::max();
+    for (size_t i = 0; i < k; ++i) {
+        top_distances[i] = std::numeric_limits<float>::max();
         top_labels[i] = 0;
     }
 
     if (is_transposed()) {
-        size_t block_size = ntotal &lt; 200000 ? std::min(size_t(16384), ntotal) : std::min(size_t(4096), ntotal);
+        size_t block_size = ntotal < 200000 ? std::min(size_t(16384), ntotal) : std::min(size_t(4096), ntotal);
         float batch_dists[16384];
 
-        for (size_t block_start = 0; block_start &lt; ntotal; block_start += block_size) {
+        for (size_t block_start = 0; block_start < ntotal; block_start += block_size) {
             size_t block_end = std::min(block_start + block_size, ntotal);
             size_t block_len = block_end - block_start;
 
-            for (size_t i = 0; i &lt; block_len; i += 8) {
+            for (size_t i = 0; i < block_len; i += 8) {
                 size_t batch = std::min(size_t(8), block_len - i);
                 compute_batch_distances_transposed(query, block_start + i, batch, batch_dists + i);
             }
 
-            for (size_t i = 0; i &lt; block_len; ++i) {
+            for (size_t i = 0; i < block_len; ++i) {
                 float dist = batch_dists[i];
-                if (dist &lt; top_distances[k-1]) {
+                if (dist < top_distances[k-1]) {
                     size_t left = 0, right = k;
-                    while (left &lt; right) {
+                    while (left < right) {
                         size_t mid = (left + right) / 2;
-                        if (dist &lt; top_distances[mid]) {
+                        if (dist < top_distances[mid]) {
                             right = mid;
                         } else {
                             left = mid + 1;
                         }
                     }
 
-                    if (left &lt; k) {
-                        std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                        std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                    if (left < k) {
+                        std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                        std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                         top_distances[left] = dist;
                         top_labels[left] = block_start + i;
                     }
@@ -144,7 +144,7 @@ void IndexFlatL2::search_single(const float* query, size_t k, float* distances, 
         const float* vec = data();
 
         size_t i = 0;
-        while (i + 7 &lt; ntotal) {
+        while (i + 7 < ntotal) {
             __builtin_prefetch(vec + d * 8, 0, 3);
             __builtin_prefetch(vec + d * 16, 0, 3);
 
@@ -157,145 +157,145 @@ void IndexFlatL2::search_single(const float* query, size_t k, float* distances, 
             float dist6 = distance::compute_l2_distance(query, vec + 6 * d, d);
             float dist7 = distance::compute_l2_distance(query, vec + 7 * d, d);
 
-            if (dist0 &lt; top_distances[k-1]) {
+            if (dist0 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist0 &lt; top_distances[mid]) {
+                    if (dist0 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist0;
                     top_labels[left] = i;
                 }
             }
 
-            if (dist1 &lt; top_distances[k-1]) {
+            if (dist1 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist1 &lt; top_distances[mid]) {
+                    if (dist1 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist1;
                     top_labels[left] = i + 1;
                 }
             }
 
-            if (dist2 &lt; top_distances[k-1]) {
+            if (dist2 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist2 &lt; top_distances[mid]) {
+                    if (dist2 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist2;
                     top_labels[left] = i + 2;
                 }
             }
 
-            if (dist3 &lt; top_distances[k-1]) {
+            if (dist3 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist3 &lt; top_distances[mid]) {
+                    if (dist3 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist3;
                     top_labels[left] = i + 3;
                 }
             }
 
-            if (dist4 &lt; top_distances[k-1]) {
+            if (dist4 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist4 &lt; top_distances[mid]) {
+                    if (dist4 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist4;
                     top_labels[left] = i + 4;
                 }
             }
 
-            if (dist5 &lt; top_distances[k-1]) {
+            if (dist5 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist5 &lt; top_distances[mid]) {
+                    if (dist5 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist5;
                     top_labels[left] = i + 5;
                 }
             }
 
-            if (dist6 &lt; top_distances[k-1]) {
+            if (dist6 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist6 &lt; top_distances[mid]) {
+                    if (dist6 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist6;
                     top_labels[left] = i + 6;
                 }
             }
 
-            if (dist7 &lt; top_distances[k-1]) {
+            if (dist7 < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist7 &lt; top_distances[mid]) {
+                    if (dist7 < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist7;
                     top_labels[left] = i + 7;
                 }
@@ -305,23 +305,23 @@ void IndexFlatL2::search_single(const float* query, size_t k, float* distances, 
             i += 8;
         }
 
-        for (; i &lt; ntotal; ++i) {
+        for (; i < ntotal; ++i) {
             float dist = distance::compute_l2_distance(query, vec, d);
 
-            if (dist &lt; top_distances[k-1]) {
+            if (dist < top_distances[k-1]) {
                 size_t left = 0, right = k;
-                while (left &lt; right) {
+                while (left < right) {
                     size_t mid = (left + right) / 2;
-                    if (dist &lt; top_distances[mid]) {
+                    if (dist < top_distances[mid]) {
                         right = mid;
                     } else {
                         left = mid + 1;
                     }
                 }
 
-                if (left &lt; k) {
-                    std::memmove(&amp;top_distances[left + 1], &amp;top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&amp;top_labels[left + 1], &amp;top_labels[left], (k - left - 1) * sizeof(size_t));
+                if (left < k) {
+                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
                     top_distances[left] = dist;
                     top_labels[left] = i;
                 }
@@ -330,33 +330,33 @@ void IndexFlatL2::search_single(const float* query, size_t k, float* distances, 
         }
     }
 
-    for (size_t j = 0; j &lt; k; ++j) {
+    for (size_t j = 0; j < k; ++j) {
         distances[j] = top_distances[j];
         labels[j] = top_labels[j];
     }
 }
 
 void IndexFlatL2::search_parallel(const float* query, size_t k, float* distances, size_t* labels) const {
-    for (size_t i = 0; i &lt; k; ++i) {
-        distances[i] = std::numeric_limits&lt;float&gt;::max();
+    for (size_t i = 0; i < k; ++i) {
+        distances[i] = std::numeric_limits<float>::max();
         labels[i] = 0;
     }
 
     size_t num_threads = std::thread::hardware_concurrency();
 
-    if (ntotal &gt; 500000) {
+    if (ntotal > 500000) {
         num_threads = std::min(num_threads, size_t(64));
-    } else if (ntotal &gt; 100000) {
+    } else if (ntotal > 100000) {
         num_threads = std::min(num_threads, size_t(32));
-    } else if (ntotal &gt; 10000) {
+    } else if (ntotal > 10000) {
         num_threads = std::min(num_threads, size_t(16));
     } else {
         num_threads = std::min(num_threads, size_t(4));
     }
 
-    if (d &gt; 256) {
+    if (d > 256) {
         num_threads = std::max(size_t(1), num_threads / 4);
-    } else if (d &gt; 128) {
+    } else if (d > 128) {
         num_threads = std::max(size_t(1), num_threads / 2);
     }
 
@@ -369,20 +369,20 @@ void IndexFlatL2::search_parallel(const float* query, size_t k, float* distances
     size_t vectors_per_thread = ntotal / max_threads;
     size_t remainder = ntotal % max_threads;
 
-    std::vector&lt;std::vector&lt;float&gt;&gt; thread_distances(max_threads, std::vector&lt;float&gt;(k, std::numeric_limits&lt;float&gt;::max()));
-    std::vector&lt;std::vector&lt;size_t&gt;&gt; thread_labels(max_threads, std::vector&lt;size_t&gt;(k, 0));
+    std::vector<std::vector<float>> thread_distances(max_threads, std::vector<float>(k, std::numeric_limits<float>::max()));
+    std::vector<std::vector<size_t>> thread_labels(max_threads, std::vector<size_t>(k, 0));
 
-    std::vector&lt;std::thread&gt; threads;
+    std::vector<std::thread> threads;
     threads.reserve(max_threads);
 
     size_t current_start = 0;
-    for (size_t t = 0; t &lt; max_threads; ++t) {
-        size_t thread_vectors = vectors_per_thread + (t &lt; remainder ? 1 : 0);
+    for (size_t t = 0; t < max_threads; ++t) {
+        size_t thread_vectors = vectors_per_thread + (t < remainder ? 1 : 0);
         size_t start = current_start;
         size_t end = current_start + thread_vectors;
         current_start = end;
 
-        threads.emplace_back([this, query, start, end, k, &amp;thread_distances, &amp;thread_labels, t]() {
+        threads.emplace_back([this, query, start, end, k, &thread_distances, &thread_labels, t]() {
             __builtin_prefetch(query, 0, 0);
             __builtin_prefetch(query + 64, 0, 0);
             __builtin_prefetch(query + 128, 0, 0);
@@ -391,20 +391,20 @@ void IndexFlatL2::search_parallel(const float* query, size_t k, float* distances
             float top_distances[1024];
             size_t top_labels[1024];
 
-            for (size_t i = 0; i &lt; k; ++i) {
-                top_distances[i] = std::numeric_limits&lt;float&gt;::max();
+            for (size_t i = 0; i < k; ++i) {
+                top_distances[i] = std::numeric_limits<float>::max();
                 top_labels[i] = 0;
             }
 
             const float* vec = data() + start * d;
-            for (size_t i = start; i &lt; end; ++i) {
+            for (size_t i = start; i < end; ++i) {
                 float dist = distance::compute_l2_distance(query, vec, d);
 
-                if (dist &lt; top_distances[k-1]) {
+                if (dist < top_distances[k-1]) {
                     size_t idx = 0;
-                    while (idx &lt; k &amp;&amp; dist &gt;= top_distances[idx]) idx++;
-                    if (idx &lt; k) {
-                        for (size_t l = k - 1; l &gt; idx; --l) {
+                    while (idx < k && dist >= top_distances[idx]) idx++;
+                    if (idx < k) {
+                        for (size_t l = k - 1; l > idx; --l) {
                             top_distances[l] = top_distances[l - 1];
                             top_labels[l] = top_labels[l - 1];
                         }
@@ -415,28 +415,28 @@ void IndexFlatL2::search_parallel(const float* query, size_t k, float* distances
                 vec += d;
             }
 
-            for (size_t i = 0; i &lt; k; ++i) {
+            for (size_t i = 0; i < k; ++i) {
                 thread_distances[t][i] = top_distances[i];
                 thread_labels[t][i] = top_labels[i];
             }
         });
     }
 
-    for (auto&amp; thread : threads) {
+    for (auto& thread : threads) {
         thread.join();
     }
 
-    for (size_t t = 0; t &lt; max_threads; ++t) {
-        for (size_t i = 0; i &lt; k; ++i) {
+    for (size_t t = 0; t < max_threads; ++t) {
+        for (size_t i = 0; i < k; ++i) {
             float dist = thread_distances[t][i];
             size_t label = thread_labels[t][i];
 
-            if (dist &lt; distances[k-1]) {
+            if (dist < distances[k-1]) {
                 size_t idx = 0;
-                while (idx &lt; k &amp;&amp; dist &gt;= distances[idx]) idx++;
+                while (idx < k && dist >= distances[idx]) idx++;
 
-                if (idx &lt; k) {
-                    for (size_t l = k - 1; l &gt; idx; --l) {
+                if (idx < k) {
+                    for (size_t l = k - 1; l > idx; --l) {
                         distances[l] = distances[l - 1];
                         labels[l] = labels[l - 1];
                     }
@@ -454,7 +454,7 @@ void IndexFlatL2::search(size_t n, const float* x, size_t k, float* distances, s
     }
 
     if (ntotal == 0) {
-        for (size_t i = 0; i &lt; n * k; ++i) {
+        for (size_t i = 0; i < n * k; ++i) {
             distances[i] = 0.0f;
             labels[i] = 0;
         }
@@ -463,56 +463,56 @@ void IndexFlatL2::search(size_t n, const float* x, size_t k, float* distances, s
 
     size_t num_threads = std::thread::hardware_concurrency();
 
-    if (ntotal &gt; 500000 &amp;&amp; n &gt;= 10) {
+    if (ntotal > 500000 && n >= 10) {
         num_threads = std::min(num_threads, size_t(32));
-    } else if (ntotal &gt; 100000 &amp;&amp; n &gt;= 10) {
+    } else if (ntotal > 100000 && n >= 10) {
         num_threads = std::min(num_threads, size_t(16));
-    } else if (n &lt; 4) {
+    } else if (n < 4) {
         num_threads = std::min(num_threads, size_t(8));
     }
 
-    if (d &gt; 256) {
+    if (d > 256) {
         num_threads = std::max(size_t(1), num_threads / 2);
     }
 
     num_threads = std::max(size_t(1), num_threads);
 
-    if (num_threads &gt; 1) {
+    if (num_threads > 1) {
         if (n == 1) {
             const float* query = x;
             float* dist_ptr = distances;
             size_t* label_ptr = labels;
             search_parallel(query, k, dist_ptr, label_ptr);
         } else {
-            std::vector&lt;std::thread&gt; threads;
+            std::vector<std::thread> threads;
             threads.reserve(num_threads);
 
             size_t queries_per_thread = n / num_threads;
             size_t remainder = n % num_threads;
 
             size_t current_start = 0;
-            for (size_t t = 0; t &lt; num_threads; ++t) {
-                size_t thread_queries = queries_per_thread + (t &lt; remainder ? 1 : 0);
+            for (size_t t = 0; t < num_threads; ++t) {
+                size_t thread_queries = queries_per_thread + (t < remainder ? 1 : 0);
                 size_t start = current_start;
                 size_t end = current_start + thread_queries;
                 current_start = end;
 
                 threads.emplace_back([this, start, end, x, k, distances, labels]() {
-                    for (size_t i = start; i &lt; end; ++i) {
+                    for (size_t i = start; i < end; ++i) {
                         const float* query = x + i * d;
                         float* dist_ptr = distances + i * k;
                         size_t* label_ptr = labels + i * k;
-                        this-&gt;search_single(query, k, dist_ptr, label_ptr);
+                        this->search_single(query, k, dist_ptr, label_ptr);
                     }
                 });
             }
 
-            for (auto&amp; thread : threads) {
+            for (auto& thread : threads) {
                 thread.join();
             }
         }
     } else {
-        for (size_t i = 0; i &lt; n; ++i) {
+        for (size_t i = 0; i < n; ++i) {
             const float* query = x + i * d;
             float* dist_ptr = distances + i * k;
             size_t* label_ptr = labels + i * k;

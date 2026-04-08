@@ -1,12 +1,12 @@
 #pragma once
 
 #include "../../core/vectordb_core.h"
-#include &lt;queue&gt;
-#include &lt;utility&gt;
-#include &lt;algorithm&gt;
-#include &lt;span&gt;
-#include &lt;thread&gt;
-#include &lt;atomic&gt;
+#include <queue>
+#include <utility>
+#include <algorithm>
+#include <span>
+#include <thread>
+#include <atomic>
 
 namespace vectordb {
 namespace algorithms {

@@ -1,10 +1,31 @@
+//! Flat Inner Product (IP) index implementation for vector database
+//! 
+//! This module provides a brute-force search index using Inner Product (dot product)
+//! distance. It is commonly used for cosine similarity search when vectors are normalized.
+//! It supports both single-threaded and parallel search for improved performance.
+//! 
+//! # Example
+//! 
+//! ```rust
+//! let index = FlatIPIndex::new(128);
+//! index.add_buf(&some_numpy_array);
+//! let (distances, labels) = index.search(query_vector, 10);
+//! ```
+
 use pyo3::prelude::*;
 use rayon::prelude::*;
-use core::distance::compute_ip_distance;
-use core::VectorStorage;
+use vectordb_core::distance::compute_ip_distance;
+use vectordb_core::VectorStorage;
 
+/// Flat Inner Product (IP) index for vector similarity search using brute-force approach
+/// 
+/// This index calculates exact nearest neighbors by comparing the query vector
+/// against every vector in the database using Inner Product (dot product) distance.
+/// When vectors are normalized to unit length, this is equivalent to cosine similarity.
+/// It supports parallel search for better performance with large datasets.
 #[pyclass]
 struct FlatIPIndex {
+    /// Vector storage holding all the indexed vectors
     storage: VectorStorage,
 }
 
@@ -86,7 +107,7 @@ impl FlatIPIndex {
         Ok(())
     }
 
-    fn search(&self, query: Vec<f32>, k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
+    fn search(&self, query: Vec<f32>, k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
         if self.storage.size == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
@@ -100,7 +121,7 @@ impl FlatIPIndex {
         self.search_single(&query, k)
     }
 
-    fn search_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
+    fn search_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
         use pyo3::buffer::PyBuffer;
 
         if self.storage.size == 0 {
@@ -146,7 +167,7 @@ impl FlatIPIndex {
         self.search_single(&query_vec, k)
     }
 
-    fn search_batch_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
+    fn search_batch_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
         use pyo3::buffer::PyBuffer;
 
         if self.storage.size == 0 {
@@ -186,30 +207,31 @@ impl FlatIPIndex {
             }
         }
 
-        let mut all_labels = Vec::with_capacity(num_queries);
         let mut all_distances = Vec::with_capacity(num_queries);
+        let mut all_labels = Vec::with_capacity(num_queries);
 
         let num_threads = self.calculate_optimal_search_threads();
 
         if num_threads > 1 && num_queries > 10 {
-            let results: Vec<(Vec<i64>, Vec<f32>)> = queries
+            let results: Vec<PyResult<(Vec<f32>, Vec<i64>)>> = queries
                 .par_iter()
-                .map(|query| self.search_single(query, k).unwrap())
+                .map(|query| self.search_single(query, k))
                 .collect();
 
-            for (labels, distances) in results {
-                all_labels.push(labels);
+            for result in results {
+                let (distances, labels) = result?;
                 all_distances.push(distances);
+                all_labels.push(labels);
             }
         } else {
             for query in queries {
-                let (labels, distances) = self.search_single(&query, k)?;
-                all_labels.push(labels);
+                let (distances, labels) = self.search_single(&query, k)?;
                 all_distances.push(distances);
+                all_labels.push(labels);
             }
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     fn size(&self) -> usize {
@@ -288,7 +310,7 @@ impl FlatIPIndex {
         }
     }
 
-    fn search_single(&self, query: &[f32], k: usize) -> PyResult<(Vec<i64>, Vec<f32>)> {
+    fn search_single(&self, query: &[f32], k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
         let mut top_distances = vec![f32::MIN; k];
         let mut top_labels = vec![0i64; k];
 
@@ -311,7 +333,7 @@ impl FlatIPIndex {
             i += 1;
         }
 
-        Ok((top_labels, top_distances))
+        Ok((top_distances, top_labels))
     }
 }
 

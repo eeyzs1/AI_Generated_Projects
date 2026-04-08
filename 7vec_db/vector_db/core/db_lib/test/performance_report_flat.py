@@ -114,6 +114,11 @@ def get_system_info():
     info['total_memory'] = psutil.virtual_memory().total / (1024 * 1024 * 1024)
     return info
 
+def normalize_vectors(vectors):
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms < 1e-6] = 1.0
+    return vectors / norms
+
 def test_performance(dimensions=128, num_vectors_list=[10000, 100000], num_queries=100, k=10):
     """Test performance of vector DB implementations"""
     print(f"Performance test with dimension: {dimensions}")
@@ -126,7 +131,9 @@ def test_performance(dimensions=128, num_vectors_list=[10000, 100000], num_queri
         
         print("Generating test data...")
         vectors = np.random.rand(num_vectors, dimensions).astype(np.float64)
+        vectors = normalize_vectors(vectors)
         queries = np.random.rand(num_queries, dimensions).astype(np.float64)
+        queries = normalize_vectors(queries)
         
         if vector_db_cpp:
             print("\nTesting C++ implementation:")
@@ -165,9 +172,9 @@ def test_performance(dimensions=128, num_vectors_list=[10000, 100000], num_queri
             start_time = time.time()
             for i in range(num_queries):
                 try:
-                    labels, distances = index_rust.search(queries[i:i+1], k)
+                    distances, labels = index_rust.search(queries[i:i+1], k)
                 except Exception as e:
-                    labels, distances = index_rust.search(queries[i].tolist(), k)
+                    distances, labels = index_rust.search(queries[i].tolist(), k)
             search_time = time.time() - start_time
             
             print(f"  Add time: {add_time:.4f}s")
@@ -204,7 +211,9 @@ def test_scalability(dimensions=128, max_vectors=1000000, step=100000, num_queri
     
     print("Generating test data...")
     all_vectors = np.random.rand(max_vectors, dimensions).astype(np.float64)
+    all_vectors = normalize_vectors(all_vectors)
     queries = np.random.rand(num_queries, dimensions).astype(np.float64)
+    queries = normalize_vectors(queries)
     
     for num_vectors in range(step, max_vectors + 1, step):
         print(f"\nTesting with {num_vectors:,} vectors:")
@@ -233,7 +242,7 @@ def test_scalability(dimensions=128, max_vectors=1000000, step=100000, num_queri
             
             start_time = time.time()
             for i in range(num_queries):
-                labels, distances = index_rust.search(queries[i].tolist(), k)
+                distances, labels = index_rust.search(queries[i].tolist(), k)
             search_time = time.time() - start_time
             
             print(f"  Rust - Add: {add_time:.4f}s, Search: {search_time:.4f}s")
@@ -258,7 +267,9 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
     results = {}
     
     vectors = np.random.rand(num_vectors, dimensions).astype(np.float32)
+    vectors = normalize_vectors(vectors)
     queries = np.random.rand(num_queries, dimensions).astype(np.float32)
+    queries = normalize_vectors(queries)
     
     print(f"\nWarming up memory for {dimensions}D vectors...")
     warmup_mem = get_memory_usage()
@@ -325,7 +336,7 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         print(f"Final memory after add: {final_mem:.2f}MB")
         
         start_time = time.time()
-        labels_batch, distances_batch = index_rust.search_batch_buf(queries, k)
+        distances_batch, labels_batch = index_rust.search_batch_buf(queries, k)
         search_time = time.time() - start_time
         if search_time <= 0:
             search_time = 1e-6

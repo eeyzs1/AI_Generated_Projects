@@ -3,7 +3,7 @@
 # Build script for Rust modules
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUST_DIR="$SCRIPT_DIR/rust"
 PYTHON_DIR="$SCRIPT_DIR/python/vectordb/rust"
 

@@ -114,13 +114,20 @@ def get_system_info():
     info['total_memory'] = psutil.virtual_memory().total / (1024 * 1024 * 1024)
     return info
 
+def normalize_vectors(vectors):
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms < 1e-6] = 1.0
+    return vectors / norms
+
 def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
     """Run benchmark for all implementations"""
     results = {}
     
     # Generate test data
     vectors = np.random.rand(num_vectors, dimensions).astype(np.float32)
+    vectors = normalize_vectors(vectors)
     queries = np.random.rand(num_queries, dimensions).astype(np.float32)
+    queries = normalize_vectors(queries)
     
     # 预热内存，确保测量稳定
     print(f"\nWarming up memory for {dimensions}D vectors...")
@@ -202,7 +209,7 @@ def run_benchmark(dimensions=128, num_vectors=100000, num_queries=100, k=10):
         # Test search
         start_time = time.time()
         # 使用批量搜索API，一次处理所有查询
-        labels_batch, distances_batch = index_rust.search_batch_buf(queries, k)
+        distances_batch, labels_batch = index_rust.search_batch_buf(queries, k)
         search_time = time.time() - start_time
         # 确保搜索时间为正数
         if search_time <= 0:

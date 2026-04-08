@@ -101,10 +101,10 @@ def test_performance(dimensions=128, num_vectors_list=[10000, 100000], num_queri
             for i in range(num_queries):
                 # 尝试直接传递numpy数组，而不是转换为列表
                 try:
-                    labels, distances = index_rust.search(queries[i:i+1], k)
+                    distances, labels = index_rust.search(queries[i:i+1], k)
                 except Exception as e:
                     # 如果失败，回退到列表转换
-                    labels, distances = index_rust.search(queries[i].tolist(), k)
+                    distances, labels = index_rust.search(queries[i].tolist(), k)
             search_time = time.time() - start_time
             
             print(f"  Add time: {add_time:.4f}s")
@@ -175,7 +175,7 @@ def test_scalability(dimensions=128, max_vectors=1000000, step=100000, num_queri
             
             start_time = time.time()
             for i in range(num_queries):
-                labels, distances = index_rust.search(queries[i].tolist(), k)
+                distances, labels = index_rust.search(queries[i].tolist(), k)
             search_time = time.time() - start_time
             
             print(f"  Rust - Add: {add_time:.4f}s, Search: {search_time:.4f}s")
