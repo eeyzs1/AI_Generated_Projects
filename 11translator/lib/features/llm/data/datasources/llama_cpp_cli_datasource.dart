@@ -13,12 +13,12 @@ class LlamaCppCliDataSource implements LlmDataSource {
   Future<void> loadModel(String modelPath) async {
     _modelPath = modelPath;
     _llamaCliPath = await _findLlamaCli();
-    
+
     if (_llamaCliPath == null) {
       throw StateError(
-        '未找到 llama.cpp 命令行程序！\n'
-        '请从 https://github.com/ggml-org/llama.cpp/releases 下载，\n'
-        '或使用 winget install llama.cpp 安装。',
+        '\u672A\u627E\u5230 llama.cpp \u547D\u4EE4\u884C\u7A0B\u5E8F\uFF01\n'
+        '\u8BF7\u4ECE https://github.com/ggml-org/llama.cpp/releases \u4E0B\u8F7D\uFF0C\n'
+        '\u6216\u4F7F\u7528 winget install llama.cpp \u5B89\u88C5',
       );
     }
   }
@@ -54,8 +54,8 @@ class LlamaCppCliDataSource implements LlmDataSource {
             return lines.first.trim();
           }
         }
-      } catch (e) {
-        // 忽略错误
+      } catch (_) {
+        continue;
       }
     }
 
@@ -70,7 +70,7 @@ class LlamaCppCliDataSource implements LlmDataSource {
 
     final effectiveParams = params ?? InferenceParams.defaults;
     final stopTokens = effectiveParams.stop ?? [];
-    
+
     final args = [
       '-m', _modelPath!,
       '-p', prompt,
@@ -99,8 +99,7 @@ class LlamaCppCliDataSource implements LlmDataSource {
             if (data.trim().isNotEmpty) {
               accumulatedText.write(data);
               final currentText = accumulatedText.toString();
-              
-              // 一旦检测到任何停止符，立即停止
+
               bool shouldStop = false;
               for (final stopToken in stopTokens) {
                 if (currentText.contains(stopToken)) {
@@ -108,13 +107,11 @@ class LlamaCppCliDataSource implements LlmDataSource {
                   break;
                 }
               }
-              
-              // 额外的严格检测：只要有输出后，只要看到 ### 就立即停止
+
               if (!shouldStop && hasStartedOutput && currentText.contains('###')) {
                 shouldStop = true;
               }
-              
-              // 如果不停止才添加 token
+
               if (!shouldStop) {
                 hasStartedOutput = true;
                 controller.add(data);
@@ -123,25 +120,24 @@ class LlamaCppCliDataSource implements LlmDataSource {
                 return;
               }
             }
-          }, onDone: () => controller.close());
+          }, onDone: () => controller.close(),);
 
       process.stderr
           .transform(utf8.decoder)
           .listen((data) {
-            // 可以在这里处理错误输出
           });
 
       yield* controller.stream;
-      
+
       final exitCode = await process.exitCode;
 
       if (exitCode != 0) {
-        throw StateError('llama.cpp 执行失败，退出代码: $exitCode');
+        throw StateError('llama.cpp \u6267\u884C\u5931\u8D25\uFF0C\u9000\u51FA\u4EE3\u7801\uFF1A$exitCode');
       }
     } catch (e) {
-      yield '本地 LLM 推理需要 llama.cpp 命令行程序\n';
-      yield '请从 https://github.com/ggml-org/llama.cpp/releases 下载\n';
-      yield '错误详情: $e';
+      yield '\u672C\u5730 LLM \u63A8\u7406\u9700\u8981 llama.cpp \u547D\u4EE4\u884C\u7A0B\u5E8F\n';
+      yield '\u8BF7\u4ECE https://github.com/ggml-org/llama.cpp/releases \u4E0B\u8F7D\n';
+      yield '\u9519\u8BEF\u8BE6\u60C5: $e';
     }
   }
 

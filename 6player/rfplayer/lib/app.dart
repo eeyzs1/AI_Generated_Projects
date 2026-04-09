@@ -74,24 +74,24 @@ class RFPlayerApp extends ConsumerWidget {
     return Platform.isWindows ? UIStyle.fluent : UIStyle.material3;
   }
 
-  material.ThemeMode _toMaterialThemeMode(ThemeMode mode) {
+  material.ThemeMode _toMaterialThemeMode(AppThemeMode mode) {
     switch (mode) {
-      case ThemeMode.light:
+      case AppThemeMode.light:
         return material.ThemeMode.light;
-      case ThemeMode.dark:
+      case AppThemeMode.dark:
         return material.ThemeMode.dark;
-      case ThemeMode.system:
+      case AppThemeMode.system:
         return material.ThemeMode.system;
     }
   }
 
-  fluent.ThemeMode _toFluentThemeMode(ThemeMode mode) {
+  fluent.ThemeMode _toFluentThemeMode(AppThemeMode mode) {
     switch (mode) {
-      case ThemeMode.light:
+      case AppThemeMode.light:
         return fluent.ThemeMode.light;
-      case ThemeMode.dark:
+      case AppThemeMode.dark:
         return fluent.ThemeMode.dark;
-      case ThemeMode.system:
+      case AppThemeMode.system:
         return fluent.ThemeMode.system;
     }
   }

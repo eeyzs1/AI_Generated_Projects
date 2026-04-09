@@ -1,12 +1,11 @@
 import 'dart:io';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
-import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart';
-import 'package:rfdictionary/features/dictionary/data/datasources/stardict_datasource.dart';
 import 'package:rfdictionary/core/di/providers.dart';
 
 part 'dictionary_manager.g.dart';
@@ -63,39 +62,39 @@ extension LanguagePairExtension on LanguagePair {
   String get displayName {
     switch (this) {
       case LanguagePair.englishChinese:
-        return '英语 → 汉语 / English → Chinese';
+        return '\u82F1\u8BED \u2192 \u6C49\u8BED / English \u2192 Chinese';
       case LanguagePair.englishFrench:
-        return '英语 → 法语 / English → French';
+        return '\u82F1\u8BED \u2192 \u6CD5\u8BED / English \u2192 French';
       case LanguagePair.englishGerman:
-        return '英语 → 德语 / English → German';
+        return '\u82F1\u8BED \u2192 \u5FB7\u8BED / English \u2192 German';
       case LanguagePair.englishSpanish:
-        return '英语 → 西班牙语 / English → Spanish';
+        return '\u82F1\u8BED \u2192 \u897F\u73ED\u7259\u8BED / English \u2192 Spanish';
       case LanguagePair.englishItalian:
-        return '英语 → 意大利语 / English → Italian';
+        return '\u82F1\u8BED \u2192 \u610F\u5927\u5229\u8BED / English \u2192 Italian';
       case LanguagePair.englishPortuguese:
-        return '英语 → 葡萄牙语 / English → Portuguese';
+        return '\u82F1\u8BED \u2192 \u8461\u8404\u7259\u8BED / English \u2192 Portuguese';
       case LanguagePair.englishRussian:
-        return '英语 → 俄语 / English → Russian';
+        return '\u82F1\u8BED \u2192 \u4FC4\u8BED / English \u2192 Russian';
       case LanguagePair.englishArabic:
-        return '英语 → 阿拉伯语 / English → Arabic';
+        return '\u82F1\u8BED \u2192 \u963F\u62C9\u4F2F\u8BED / English \u2192 Arabic';
       case LanguagePair.englishJapanese:
-        return '英语 → 日语 / English → Japanese';
+        return '\u82F1\u8BED \u2192 \u65E5\u8BED / English \u2192 Japanese';
       case LanguagePair.englishKorean:
-        return '英语 → 韩语 / English → Korean';
+        return '\u82F1\u8BED \u2192 \u97E9\u8BED / English \u2192 Korean';
       case LanguagePair.chineseEnglish:
-        return '汉语 → 英语 / Chinese → English';
+        return '\u6C49\u8BED \u2192 \u82F1\u8BED / Chinese \u2192 English';
       case LanguagePair.frenchEnglish:
-        return '法语 → 英语 / French → English';
+        return '\u6CD5\u8BED \u2192 \u82F1\u8BED / French \u2192 English';
       case LanguagePair.germanEnglish:
-        return '德语 → 英语 / German → English';
+        return '\u5FB7\u8BED \u2192 \u82F1\u8BED / German \u2192 English';
       case LanguagePair.spanishEnglish:
-        return '西班牙语 → 英语 / Spanish → English';
+        return '\u897F\u73ED\u7259\u8BED \u2192 \u82F1\u8BED / Spanish \u2192 English';
       case LanguagePair.italianEnglish:
-        return '意大利语 → 英语 / Italian → English';
+        return '\u610F\u5927\u5229\u8BED \u2192 \u82F1\u8BED / Italian \u2192 English';
       case LanguagePair.portugueseEnglish:
-        return '葡萄牙语 → 英语 / Portuguese → English';
+        return '\u8461\u8404\u7259\u8BED \u2192 \u82F1\u8BED / Portuguese \u2192 English';
       case LanguagePair.russianEnglish:
-        return '俄语 → 英语 / Russian → English';
+        return '\u4FC4\u8BED \u2192 \u82F1\u8BED / Russian \u2192 English';
     }
   }
 }
@@ -144,82 +143,82 @@ extension DictionaryTypeExtension on DictionaryType {
   String get displayName {
     switch (this) {
       case DictionaryType.ecdict:
-        return 'ECDict (英汉词典 / English-Chinese)';
+        return 'ECDict (\u82F1\u6C49\u8BCD\u5178 / English-Chinese)';
       case DictionaryType.stardictEnglishChinese:
-        return 'StarDict (英→汉 / English→Chinese)';
+        return 'StarDict (\u82F1\u2192\u4E2D / English\u2192Chinese)';
       case DictionaryType.stardictEnglishFrench:
-        return 'StarDict (英→法 / English→French)';
+        return 'StarDict (\u82F1\u2192\u6CD5 / English\u2192French)';
       case DictionaryType.stardictEnglishGerman:
-        return 'StarDict (英→德 / English→German)';
+        return 'StarDict (\u82F1\u2192\u5FB7 / English\u2192German)';
       case DictionaryType.stardictEnglishSpanish:
-        return 'StarDict (英→西 / English→Spanish)';
+        return 'StarDict (\u82F1\u2192\u897F / English\u2192Spanish)';
       case DictionaryType.stardictEnglishItalian:
-        return 'StarDict (英→意 / English→Italian)';
+        return 'StarDict (\u82F1\u2192\u610F / English\u2192Italian)';
       case DictionaryType.stardictEnglishPortuguese:
-        return 'StarDict (英→葡 / English→Portuguese)';
+        return 'StarDict (\u82F1\u2192\u8461 / English\u2192Portuguese)';
       case DictionaryType.stardictEnglishRussian:
-        return 'StarDict (英→俄 / English→Russian)';
+        return 'StarDict (\u82F1\u2192\u4FC4 / English\u2192Russian)';
       case DictionaryType.stardictEnglishArabic:
-        return 'StarDict (英→阿 / English→Arabic)';
+        return 'StarDict (\u82F1\u2192\u963F / English\u2192Arabic)';
       case DictionaryType.stardictEnglishJapanese:
-        return 'StarDict (英→日 / English→Japanese)';
+        return 'StarDict (\u82F1\u2192\u65E5 / English\u2192Japanese)';
       case DictionaryType.stardictEnglishKorean:
-        return 'StarDict (英→韩 / English→Korean)';
+        return 'StarDict (\u82F1\u2192\u97E9 / English\u2192Korean)';
       case DictionaryType.stardictChineseEnglish:
-        return 'StarDict (汉→英 / Chinese→English)';
+        return 'StarDict (\u6C49\u2192\u82F1 / Chinese\u2192English)';
       case DictionaryType.stardictFrenchEnglish:
-        return 'StarDict (法→英 / French→English)';
+        return 'StarDict (\u6CD5\u2192\u82F1 / French\u2192English)';
       case DictionaryType.stardictGermanEnglish:
-        return 'StarDict (德→英 / German→English)';
+        return 'StarDict (\u5FB7\u2192\u82F1 / German\u2192English)';
       case DictionaryType.stardictSpanishEnglish:
-        return 'StarDict (西→英 / Spanish→English)';
+        return 'StarDict (\u897F\u2192\u82F1 / Spanish\u2192English)';
       case DictionaryType.stardictItalianEnglish:
-        return 'StarDict (意→英 / Italian→English)';
+        return 'StarDict (\u610F\u2192\u82F1 / Italian\u2192English)';
       case DictionaryType.stardictPortugueseEnglish:
-        return 'StarDict (葡→英 / Portuguese→English)';
+        return 'StarDict (\u8461\u2192\u82F1 / Portuguese\u2192English)';
       case DictionaryType.stardictRussianEnglish:
-        return 'StarDict (俄→英 / Russian→English)';
+        return 'StarDict (\u4FC4\u2192\u82F1 / Russian\u2192English)';
     }
   }
 
   String get description {
     switch (this) {
       case DictionaryType.ecdict:
-        return '包含超过 300 万词条的英汉词典（SQLite）\nEnglish-Chinese dictionary with over 3 million entries (SQLite)';
+        return '\u5305\u542B\u8D85\u8FC7 300 \u4E07\u8BCD\u6761\u7684\u82F1\u6C49\u8BCD\u5178\uFF08SQLite\uFF09\nEnglish-Chinese dictionary with over 3 million entries (SQLite)';
       case DictionaryType.stardictEnglishChinese:
-        return 'StarDict 格式的英汉字典（Wiktionary）\nEnglish-Chinese dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u6C49\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Chinese dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishFrench:
-        return 'StarDict 格式的英法字典（Wiktionary）\nEnglish-French dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u6CD5\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-French dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishGerman:
-        return 'StarDict 格式的英德字典（Wiktionary）\nEnglish-German dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u5FB7\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-German dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishSpanish:
-        return 'StarDict 格式的英西字典（Wiktionary）\nEnglish-Spanish dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u897F\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Spanish dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishItalian:
-        return 'StarDict 格式的英意字典（Wiktionary）\nEnglish-Italian dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u610F\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Italian dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishPortuguese:
-        return 'StarDict 格式的英葡字典（Wiktionary）\nEnglish-Portuguese dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u8461\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Portuguese dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishRussian:
-        return 'StarDict 格式的英俄字典（Wiktionary）\nEnglish-Russian dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u4FC4\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Russian dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishArabic:
-        return 'StarDict 格式的英阿字典（Wiktionary）\nEnglish-Arabic dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u963F\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Arabic dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishJapanese:
-        return 'StarDict 格式的英日字典（Wiktionary）\nEnglish-Japanese dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u65E5\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Japanese dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictEnglishKorean:
-        return 'StarDict 格式的英韩字典（Wiktionary）\nEnglish-Korean dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u82F1\u97E9\u5B57\u5178\uFF08Wiktionary\uFF09\nEnglish-Korean dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictChineseEnglish:
-        return 'StarDict 格式的汉英字典（Wiktionary）\nChinese-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u6C49\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nChinese-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictFrenchEnglish:
-        return 'StarDict 格式的法英字典（Wiktionary）\nFrench-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u6CD5\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nFrench-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictGermanEnglish:
-        return 'StarDict 格式的德英字典（Wiktionary）\nGerman-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u5FB7\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nGerman-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictSpanishEnglish:
-        return 'StarDict 格式的西英字典（Wiktionary）\nSpanish-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u897F\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nSpanish-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictItalianEnglish:
-        return 'StarDict 格式的意英字典（Wiktionary）\nItalian-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u610F\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nItalian-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictPortugueseEnglish:
-        return 'StarDict 格式的葡英字典（Wiktionary）\nPortuguese-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u8461\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nPortuguese-English dictionary in StarDict format (Wiktionary)';
       case DictionaryType.stardictRussianEnglish:
-        return 'StarDict 格式的俄英字典（Wiktionary）\nRussian-English dictionary in StarDict format (Wiktionary)';
+        return 'StarDict \u683C\u5F0F\u7684\u4FC4\u82F1\u5B57\u5178\uFF08Wiktionary\uFF09\nRussian-English dictionary in StarDict format (Wiktionary)';
     }
   }
 
@@ -267,89 +266,88 @@ extension DictionaryTypeExtension on DictionaryType {
   String get sizeInfo {
     switch (this) {
       case DictionaryType.ecdict:
-        return '约 210MB / ~210MB';
+        return '\u7EA6210MB / ~210MB';
       case DictionaryType.stardictEnglishChinese:
-        return '约 70MB / ~70MB';
+        return '\u7EA670MB / ~70MB';
       case DictionaryType.stardictEnglishFrench:
-        return '约 15MB / ~15MB';
+        return '\u7EA615MB / ~15MB';
       case DictionaryType.stardictEnglishGerman:
-        return '约 10MB / ~10MB';
+        return '\u7EA610MB / ~10MB';
       case DictionaryType.stardictEnglishSpanish:
-        return '约 15MB / ~15MB';
+        return '\u7EA615MB / ~15MB';
       case DictionaryType.stardictEnglishItalian:
-        return '约 10MB / ~10MB';
+        return '\u7EA610MB / ~10MB';
       case DictionaryType.stardictEnglishPortuguese:
-        return '约 8MB / ~8MB';
+        return '\u7EA68MB / ~8MB';
       case DictionaryType.stardictEnglishRussian:
-        return '约 12MB / ~12MB';
+        return '\u7EA612MB / ~12MB';
       case DictionaryType.stardictEnglishArabic:
-        return '约 5MB / ~5MB';
+        return '\u7EA65MB / ~5MB';
       case DictionaryType.stardictEnglishJapanese:
-        return '约 8MB / ~8MB';
+        return '\u7EA68MB / ~8MB';
       case DictionaryType.stardictEnglishKorean:
-        return '约 3MB / ~3MB';
+        return '\u7EA63MB / ~3MB';
       case DictionaryType.stardictChineseEnglish:
-        return '约 12MB / ~12MB';
+        return '\u7EA612MB / ~12MB';
       case DictionaryType.stardictFrenchEnglish:
-        return '约 15MB / ~15MB';
+        return '\u7EA615MB / ~15MB';
       case DictionaryType.stardictGermanEnglish:
-        return '约 10MB / ~10MB';
+        return '\u7EA610MB / ~10MB';
       case DictionaryType.stardictSpanishEnglish:
-        return '约 15MB / ~15MB';
+        return '\u7EA615MB / ~15MB';
       case DictionaryType.stardictItalianEnglish:
-        return '约 10MB / ~10MB';
+        return '\u7EA610MB / ~10MB';
       case DictionaryType.stardictPortugueseEnglish:
-        return '约 8MB / ~8MB';
+        return '\u7EA68MB / ~8MB';
       case DictionaryType.stardictRussianEnglish:
-        return '约 12MB / ~12MB';
+        return '\u7EA612MB / ~12MB';
     }
   }
 
   int get approximateSizeBytes {
     switch (this) {
       case DictionaryType.ecdict:
-        return 210 * 1024 * 1024; // 210MB (实际ZIP文件大小)
+        return 210 * 1024 * 1024;
       case DictionaryType.stardictEnglishChinese:
-        return 70 * 1024 * 1024; // 70MB
+        return 70 * 1024 * 1024;
       case DictionaryType.stardictEnglishFrench:
-        return 15 * 1024 * 1024; // 15MB
+        return 15 * 1024 * 1024;
       case DictionaryType.stardictEnglishGerman:
-        return 10 * 1024 * 1024; // 10MB
+        return 10 * 1024 * 1024;
       case DictionaryType.stardictEnglishSpanish:
-        return 15 * 1024 * 1024; // 15MB
+        return 15 * 1024 * 1024;
       case DictionaryType.stardictEnglishItalian:
-        return 10 * 1024 * 1024; // 10MB
+        return 10 * 1024 * 1024;
       case DictionaryType.stardictEnglishPortuguese:
-        return 8 * 1024 * 1024; // 8MB
+        return 8 * 1024 * 1024;
       case DictionaryType.stardictEnglishRussian:
-        return 12 * 1024 * 1024; // 12MB
+        return 12 * 1024 * 1024;
       case DictionaryType.stardictEnglishArabic:
-        return 5 * 1024 * 1024; // 5MB
+        return 5 * 1024 * 1024;
       case DictionaryType.stardictEnglishJapanese:
-        return 8 * 1024 * 1024; // 8MB
+        return 8 * 1024 * 1024;
       case DictionaryType.stardictEnglishKorean:
-        return 3 * 1024 * 1024; // 3MB
+        return 3 * 1024 * 1024;
       case DictionaryType.stardictChineseEnglish:
-        return 12 * 1024 * 1024; // 12MB
+        return 12 * 1024 * 1024;
       case DictionaryType.stardictFrenchEnglish:
-        return 15 * 1024 * 1024; // 15MB
+        return 15 * 1024 * 1024;
       case DictionaryType.stardictGermanEnglish:
-        return 10 * 1024 * 1024; // 10MB
+        return 10 * 1024 * 1024;
       case DictionaryType.stardictSpanishEnglish:
-        return 15 * 1024 * 1024; // 15MB
+        return 15 * 1024 * 1024;
       case DictionaryType.stardictItalianEnglish:
-        return 10 * 1024 * 1024; // 10MB
+        return 10 * 1024 * 1024;
       case DictionaryType.stardictPortugueseEnglish:
-        return 8 * 1024 * 1024; // 8MB
+        return 8 * 1024 * 1024;
       case DictionaryType.stardictRussianEnglish:
-        return 12 * 1024 * 1024; // 12MB
+        return 12 * 1024 * 1024;
     }
   }
 
   String? get downloadUrl {
     switch (this) {
       case DictionaryType.ecdict:
-        // ECDict 的 GitHub release 下载地址
         return 'https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip';
       case DictionaryType.stardictEnglishChinese:
         return 'https://github.com/xxyzz/wiktionary_stardict/releases/download/20260324/English-Chinese.tar.zst';
@@ -473,7 +471,7 @@ class DictionaryManager extends _$DictionaryManager {
     if (index != null && index >= 0 && index < DictionaryType.values.length) {
       state = state.copyWith(type: DictionaryType.values[index]);
     }
-    
+
     final selectedIndices = prefs.getStringList(_kSelectedDictionariesKey);
     if (selectedIndices != null) {
       final selected = selectedIndices
@@ -500,7 +498,7 @@ class DictionaryManager extends _$DictionaryManager {
       current.add(type);
     }
     state = state.copyWith(selectedDictionaries: current);
-    
+
     final prefs = await SharedPreferences.getInstance();
     final indices = current.map((t) => t.index.toString()).toList();
     await prefs.setStringList(_kSelectedDictionariesKey, indices);
@@ -532,14 +530,13 @@ class DictionaryManager extends _$DictionaryManager {
     if (savedPath != null && File(savedPath).existsSync()) {
       return true;
     }
-    
-    // 检查默认位置
+
     final dir = await getApplicationDocumentsDirectory();
     final defaultPath = path.join(dir.path, state.type.fileName);
     if (File(defaultPath).existsSync()) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -548,14 +545,13 @@ class DictionaryManager extends _$DictionaryManager {
     if (savedPath != null && File(savedPath).existsSync()) {
       return savedPath;
     }
-    
-    // 检查默认位置
+
     final dir = await getApplicationDocumentsDirectory();
     final defaultPath = path.join(dir.path, state.type.fileName);
     if (File(defaultPath).existsSync()) {
       return defaultPath;
     }
-    
+
     return null;
   }
 
@@ -573,7 +569,7 @@ class DictionaryManager extends _$DictionaryManager {
     if (url == null) {
       state = state.copyWith(
         downloadStatus: DownloadStatus.failed,
-        downloadError: '该词典暂不支持直接下载',
+        downloadError: '\u8BE5\u8BCD\u5178\u6682\u4E0D\u652F\u6301\u76F4\u63A5\u4E0B\u8F7D',
       );
       return;
     }
@@ -589,23 +585,22 @@ class DictionaryManager extends _$DictionaryManager {
 
     try {
       String savePath;
-      
+
       if (customDirectory != null && Directory(customDirectory).existsSync()) {
         savePath = path.join(customDirectory, state.type.fileName);
       } else {
         final dir = await getApplicationDocumentsDirectory();
         savePath = path.join(dir.path, state.type.fileName);
       }
-      
+
       final tempPath = '$savePath.tmp';
 
-      // 如果临时文件存在，删除它
       if (File(tempPath).existsSync()) {
         await File(tempPath).delete();
       }
 
       final dio = Dio();
-      
+
       await dio.download(
         url,
         tempPath,
@@ -621,41 +616,35 @@ class DictionaryManager extends _$DictionaryManager {
         },
       );
 
-      // 下载完成
       if (File(tempPath).existsSync()) {
         String finalPath;
-        
-        // StarDict 格式：下载后解压
+
         if (state.type.isStarDictFormat) {
-          final archivePath = savePath + '.tar.zst';
+          final archivePath = '$savePath.tar.zst';
           await File(tempPath).rename(archivePath);
-          
-          // 创建解压目录
+
           final extractDir = path.join(path.dirname(savePath), state.type.fileName);
           final extractDirObj = Directory(extractDir);
-          if (!await extractDirObj.existsSync()) {
+          if (!extractDirObj.existsSync()) {
             await extractDirObj.create(recursive: true);
           }
-          
-          // 解压词典
+
           final starDictDataSource = ref.read(starDictDataSourceProvider);
           final ifoPath = await starDictDataSource.extractDictionary(archivePath, extractDir);
-          
+
           if (ifoPath != null) {
             finalPath = ifoPath;
-            // 清理归档文件
             await File(archivePath).delete();
           } else {
-            throw Exception('解压 StarDict 词典失败');
+            throw Exception('\u89E3\u538B StarDict \u8BCD\u5178\u5931\u8D25');
           }
         }
-        // ZIP 文件：解压
         else if (url.toLowerCase().endsWith('.zip') || tempPath.toLowerCase().endsWith('.zip')) {
           final zipPath = tempPath;
           final extractDir = Directory(path.dirname(savePath));
           final bytes = await File(zipPath).readAsBytes();
           final archive = ZipDecoder().decodeBytes(bytes);
-          
+
           String? dbFilePath;
           for (final file in archive) {
             if (file.isFile && file.name.toLowerCase().endsWith('.db')) {
@@ -666,19 +655,19 @@ class DictionaryManager extends _$DictionaryManager {
               break;
             }
           }
-          
+
           await File(zipPath).delete();
-          
+
           if (dbFilePath != null) {
             finalPath = dbFilePath;
           } else {
-            throw Exception('ZIP 文件中未找到 .db 数据库文件');
+            throw Exception('ZIP \u6587\u4EF6\u4E2D\u672A\u627E\u5230 .db \u6570\u636E\u5E93\u6587\u4EF6');
           }
         } else {
           await File(tempPath).rename(savePath);
           finalPath = savePath;
         }
-        
+
         await setDictionaryPath(finalPath);
         state = state.copyWith(
           downloadStatus: DownloadStatus.completed,
@@ -689,16 +678,15 @@ class DictionaryManager extends _$DictionaryManager {
       if (_cancelToken?.isCancelled ?? false) {
         state = state.copyWith(
           downloadStatus: DownloadStatus.idle,
-          downloadError: '下载已取消',
+          downloadError: '\u4E0B\u8F7D\u5DF2\u53D6\u6D88',
         );
       } else {
         state = state.copyWith(
           downloadStatus: DownloadStatus.failed,
-          downloadError: '下载失败: ${e.toString()}',
+          downloadError: '\u4E0B\u8F7D\u5931\u8D25: ${e.toString()}',
         );
       }
-      
-      // 清理临时文件
+
       try {
         String tempPath;
         if (customDirectory != null) {

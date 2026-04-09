@@ -1,6 +1,8 @@
 const Map<String, String> zhCN = {
   // App 通用
   'appName': 'RF播放器',
+  'home': '首页',
+  'files': '文件',
   'recentPlays': '最近播放',
   'bookmarks': '书签',
   'noRecentPlays': '暂无播放历史',

@@ -4,9 +4,14 @@ import 'package:flutter/foundation.dart';
 
 class PlatformUtils {
   static bool get isAndroid => !kIsWeb && Platform.isAndroid;
+  static bool get isIOS => !kIsWeb && Platform.isIOS;
   static bool get isWindows => !kIsWeb && Platform.isWindows;
-  static bool get isDesktop => !kIsWeb && Platform.isWindows;
-  static bool get isMobile => !kIsWeb && Platform.isAndroid;
+  static bool get isMacOS => !kIsWeb && Platform.isMacOS;
+  static bool get isLinux => !kIsWeb && Platform.isLinux;
+  static bool get isDesktop =>
+      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+  static bool get isMobile =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   static EdgeInsets get contentPadding => isDesktop
       ? const EdgeInsets.symmetric(horizontal: 24, vertical: 16)

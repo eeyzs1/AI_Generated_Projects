@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/settings_provider.dart';
 import '../../../data/models/app_settings.dart' as app_settings;
 import '../../../core/localization/app_localizations.dart';
@@ -99,7 +100,7 @@ class SettingsPage extends ConsumerWidget {
             const SizedBox(height: 12),
             Wrap(
               spacing: 12,
-              children: app_settings.ThemeMode.values.map((mode) {
+              children: app_settings.AppThemeMode.values.map((mode) {
                 return ChoiceChip(
                   label: Text(_getThemeModeLabel(context, mode)),
                   selected: settings.themeMode == mode,
@@ -119,14 +120,14 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  String _getThemeModeLabel(BuildContext context, app_settings.ThemeMode mode) {
+  String _getThemeModeLabel(BuildContext context, app_settings.AppThemeMode mode) {
     final localizations = AppLocalizations.of(context)!;
     switch (mode) {
-      case app_settings.ThemeMode.system:
+      case app_settings.AppThemeMode.system:
         return localizations.system;
-      case app_settings.ThemeMode.light:
+      case app_settings.AppThemeMode.light:
         return localizations.light;
-      case app_settings.ThemeMode.dark:
+      case app_settings.AppThemeMode.dark:
         return localizations.dark;
     }
   }
@@ -218,7 +219,13 @@ class SettingsPage extends ConsumerWidget {
           children: [
             Text(localizations.appName),
             const SizedBox(height: 8),
-            Text('${localizations.version}: 1.0.0'),
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (context, snapshot) {
+                final version = snapshot.data?.version ?? '...';
+                return Text('${localizations.version}: $version');
+              },
+            ),
             const SizedBox(height: 8),
             Text(localizations.freeMediaPlayer),
           ],

@@ -25,12 +25,12 @@ def _clean_text(text: str) -> str:
 def check_internet_access(host: str, port: int = 443, timeout: int = 5) -> bool:
     """
     检查是否能连接到指定主机
-    
+
     Args:
         host: 主机名
         port: 端口
         timeout: 超时时间（秒）
-    
+
     Returns:
         是否能连接
     """
@@ -62,20 +62,20 @@ def check_modelscope_access() -> bool:
 def get_best_download_source() -> str:
     """
     自动选择最佳下载源
-    
+
     Returns:
         'huggingface' 或 'modelscope'
     """
     print("[INFO] 正在检测最佳下载源...", file=sys.stderr)
-    
+
     if check_huggingface_access():
         print("[INFO] 可以访问 Hugging Face", file=sys.stderr)
         return 'huggingface'
-    
+
     if check_modelscope_access():
         print("[INFO] 可以访问 ModelScope", file=sys.stderr)
         return 'modelscope'
-    
+
     print("[WARNING] 无法访问任何下载源", file=sys.stderr)
     return 'modelscope'
 
@@ -83,11 +83,11 @@ def get_best_download_source() -> str:
 def get_model_repo_id(model_type: str, source: str) -> str:
     """
     根据模型类型和下载源获取仓库 ID
-    
+
     Args:
         model_type: 'opus_mt_en_zh' 或 'opus_mt_zh_en'
         source: 下载源
-    
+
     Returns:
         仓库 ID
     """
@@ -101,28 +101,28 @@ def get_model_repo_id(model_type: str, source: str) -> str:
             return 'AI-ModelScope/opus-mt-en-zh'
         elif model_type == 'opus_mt_zh_en':
             return 'AI-ModelScope/opus-mt-zh-en'
-    
+
     raise ValueError(f"Unsupported model type or source: {model_type}, {source}")
 
 
 class OpusMtTranslator:
     """OPUS-MT 翻译器封装 - 支持本地模型目录"""
-    
+
     def __init__(self, model_dir: Optional[str] = None):
         """
         初始化翻译器
-        
+
         Args:
             model_dir: 本地模型根目录（包含 opus-mt-en-zh/ 等子目录）
         """
         self.model_dir = model_dir
         self.models = {}  # 缓存已加载的模型
         self.tokenizers = {}  # 缓存已加载的分词器
-    
+
     def _get_model_key(self, source_lang: str, target_lang: str) -> str:
         """生成模型缓存 key"""
         return f"{source_lang}-{target_lang}"
-    
+
     def _get_model_folder_name(self, source_lang: str, target_lang: str) -> str:
         """获取模型文件夹名称"""
         if source_lang == 'en' and target_lang == 'zh':
@@ -131,33 +131,33 @@ class OpusMtTranslator:
             return 'opus-mt-zh-en'
         else:
             raise ValueError(f"不支持的语言对: {source_lang}->{target_lang}")
-    
+
     def _load_model(self, source_lang: str, target_lang: str):
         """加载模型和分词器"""
         from transformers import MarianMTModel, MarianTokenizer
-        
+
         key = self._get_model_key(source_lang, target_lang)
-        
+
         if key in self.models and key in self.tokenizers:
             return
-        
+
         folder_name = self._get_model_folder_name(source_lang, target_lang)
-        
+
         if self.model_dir is None:
             raise ValueError("模型目录未设置，请先下载模型")
-        
+
         model_path = Path(self.model_dir) / folder_name
-        
+
         if not model_path.exists():
             raise FileNotFoundError(f"模型目录不存在: {model_path}")
-        
+
         print(f"[INFO] 正在加载 OPUS-MT 模型: {model_path}", file=sys.stderr)
-        
+
         self.tokenizers[key] = MarianTokenizer.from_pretrained(str(model_path))
         self.models[key] = MarianMTModel.from_pretrained(str(model_path))
-        
+
         print(f"[INFO] OPUS-MT 模型加载成功！", file=sys.stderr)
-    
+
     @lru_cache(maxsize=1000)
     def translate(
         self,
@@ -168,27 +168,27 @@ class OpusMtTranslator:
     ) -> str:
         """
         翻译文本
-        
+
         Args:
             text: 待翻译文本
             source_lang: 源语言代码 ('en' 或 'zh')
             target_lang: 目标语言代码 ('zh' 或 'en')
             max_length: 最大生成长度
-        
+
         Returns:
             翻译后的文本
         """
         try:
             self._load_model(source_lang, target_lang)
-            
+
             key = self._get_model_key(source_lang, target_lang)
             tokenizer = self.tokenizers[key]
             model = self.models[key]
-            
+
             cleaned_text = _clean_text(text.strip())
             if not cleaned_text:
                 return ''
-            
+
             inputs = tokenizer(
                 cleaned_text,
                 return_tensors="pt",
@@ -196,17 +196,17 @@ class OpusMtTranslator:
                 truncation=True,
                 max_length=max_length
             )
-            
+
             translated = model.generate(
                 **inputs,
                 max_length=max_length,
                 num_beams=4,
                 early_stopping=True
             )
-            
+
             result = tokenizer.decode(translated[0], skip_special_tokens=True)
             return _clean_text(result.strip())
-            
+
         except Exception as e:
             print(f"[ERROR] OPUS-MT 翻译失败: {e}", file=sys.stderr)
             import traceback
@@ -222,30 +222,30 @@ class StarDictManager:
 def download_model_from_hub(repo_id: str, save_path: str, on_progress=None) -> bool:
     """
     从 Hugging Face Hub 下载模型
-    
+
     Args:
         repo_id: 模型仓库 ID (如 'Helsinki-NLP/opus-mt-en-zh')
         save_path: 保存路径
         on_progress: 进度回调函数 (received_bytes, total_bytes)
-    
+
     Returns:
         是否成功
     """
     try:
         from huggingface_hub import snapshot_download
-        
+
         print(f"[INFO] 正在下载模型: {repo_id}", file=sys.stderr)
-        
+
         def progress_callback(current, total):
             if on_progress:
                 on_progress(current, total)
-        
+
         snapshot_download(
             repo_id=repo_id,
             local_dir=save_path,
             local_dir_use_symlinks=False,
         )
-        
+
         print(f"[INFO] 模型下载完成: {save_path}", file=sys.stderr)
         return True
     except Exception as e:
@@ -258,29 +258,29 @@ def download_model_from_hub(repo_id: str, save_path: str, on_progress=None) -> b
 def download_model_from_modelscope(repo_id: str, save_path: str, on_progress=None) -> bool:
     """
     从 ModelScope（阿里）下载模型
-    
+
     Args:
         repo_id: 模型仓库 ID (如 'AI-ModelScope/opus-mt-en-zh')
         save_path: 保存路径
         on_progress: 进度回调函数 (received_bytes, total_bytes)
-    
+
     Returns:
         是否成功
     """
     try:
         from modelscope import snapshot_download
-        
+
         print(f"[INFO] 正在从 ModelScope 下载模型: {repo_id}", file=sys.stderr)
-        
+
         def progress_callback(current, total):
             if on_progress:
                 on_progress(current, total)
-        
+
         snapshot_download(
             model_id=repo_id,
             cache_dir=save_path,
         )
-        
+
         # ModelScope 下载后需要移动文件到正确位置
         model_dir = Path(save_path)
         for item in model_dir.iterdir():
@@ -293,7 +293,7 @@ def download_model_from_modelscope(repo_id: str, save_path: str, on_progress=Non
                         if file.is_file():
                             file.rename(model_dir / file.name)
                 break
-        
+
         print(f"[INFO] 模型下载完成: {save_path}", file=sys.stderr)
         return True
     except Exception as e:
@@ -308,7 +308,7 @@ class LlmServer:
         self.model_dir = model_dir
         self.opus_mt = OpusMtTranslator(model_dir)
         self.stardict = StarDictManager()
-    
+
     def translate_with_opus_mt(
         self,
         text: str,
@@ -317,7 +317,7 @@ class LlmServer:
     ) -> str:
         """使用 OPUS-MT 翻译"""
         return self.opus_mt.translate(text, source_lang, target_lang)
-    
+
     def download_model(
         self,
         model_type: str,
@@ -327,32 +327,32 @@ class LlmServer:
     ) -> Dict[str, Any]:
         """
         下载模型（自动检测最佳源）
-        
+
         Args:
             model_type: 模型类型
             save_path: 保存路径
             source: 强制指定下载源 ('huggingface' 或 'modelscope')
             auto_detect: 是否自动检测
-        
+
         Returns:
             结果字典
         """
         actual_source = source
-        
+
         if auto_detect or actual_source is None:
             actual_source = get_best_download_source()
-        
+
         try:
             repo_id = get_model_repo_id(model_type, actual_source)
-            
+
             print(f"[DOWNLOAD] {actual_source} {repo_id} -> {save_path}", file=sys.stderr)
-            
+
             success = False
             if actual_source == 'modelscope':
                 success = download_model_from_modelscope(repo_id, save_path)
             else:
                 success = download_model_from_hub(repo_id, save_path)
-            
+
             return {
                 'success': success,
                 'source': actual_source
@@ -366,43 +366,45 @@ class LlmServer:
                 'error': str(e),
                 'source': actual_source
             }
-    
+
     def check_download_sources(self) -> Dict[str, bool]:
         """检查各下载源的可用性"""
         return {
             'huggingface': check_huggingface_access(),
             'modelscope': check_modelscope_access(),
         }
-    
+
     def run(self):
         print("[READY]", file=sys.stderr)
         print(json.dumps({'type': 'ready'}, ensure_ascii=True), flush=True)
-        
+
         while True:
             try:
                 line = sys.stdin.readline()
                 if not line:
                     break
-                
+
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 try:
                     request = json.loads(line)
                     action = request.get('action')
-                    
+                    request_id = request.get('requestId')
+
                     if action == 'translate_opus_mt':
                         text = request.get('text', '')
                         source_lang = request.get('sourceLang', 'en')
                         target_lang = request.get('targetLang', 'zh')
-                        
+
                         print(f"[OPUS-MT] {source_lang}->{target_lang}: {text[:50]}...", file=sys.stderr)
-                        
+
                         try:
                             result = self.translate_with_opus_mt(text, source_lang, target_lang)
                             output_dict = {
                                 'type': 'translate_result',
+                                'requestId': request_id,
                                 'data': {
                                     'success': True,
                                     'text': result
@@ -411,69 +413,77 @@ class LlmServer:
                         except Exception as e:
                             output_dict = {
                                 'type': 'translate_result',
+                                'requestId': request_id,
                                 'data': {
                                     'success': False,
                                     'error': str(e)
                                 }
                             }
-                        
+
                         print(json.dumps(output_dict, ensure_ascii=True), flush=True)
-                    
+
                     elif action == 'download_model':
                         model_type = request.get('modelType', '')
                         save_path = request.get('savePath', '')
                         source = request.get('source')
                         auto_detect = request.get('autoDetect', True)
-                        
+
                         result = self.download_model(model_type, save_path, source, auto_detect)
-                        
+
                         output_dict = {
                             'type': 'download_result',
+                            'requestId': request_id,
                             'data': result
                         }
-                        
+
                         print(json.dumps(output_dict, ensure_ascii=True), flush=True)
-                    
+
                     elif action == 'check_sources':
                         sources = self.check_download_sources()
                         output_dict = {
                             'type': 'sources_result',
+                            'requestId': request_id,
                             'data': sources
                         }
                         print(json.dumps(output_dict, ensure_ascii=True), flush=True)
-                    
+
                     elif action == 'ping':
-                        print(json.dumps({'type': 'pong'}, ensure_ascii=True), flush=True)
-                        
+                        output = {'type': 'pong', 'requestId': request_id}
+                        print(json.dumps(output, ensure_ascii=True), flush=True)
+
                     elif action == 'exit':
                         break
-                    
+
                     else:
-                        print(json.dumps({
+                        output_dict = {
                             'type': 'error',
+                            'requestId': request_id,
                             'data': f'Unknown action: {action}'
-                        }, ensure_ascii=True), flush=True)
-                        
+                        }
+                        print(json.dumps(output_dict, ensure_ascii=True), flush=True)
+
                 except json.JSONDecodeError as e:
-                    print(json.dumps({
+                    output_dict = {
                         'type': 'error',
                         'data': f'JSON decode error: {str(e)}'
-                    }, ensure_ascii=True), flush=True)
-                    
+                    }
+                    print(json.dumps(output_dict, ensure_ascii=True), flush=True)
+
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                print(json.dumps({
+                output_dict = {
                     'type': 'error',
                     'data': f'Server error: {str(e)}'
-                }, ensure_ascii=True), flush=True)
+                }
+                print(json.dumps(output_dict, ensure_ascii=True), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description='OPUS-MT 本地翻译服务器')
     parser.add_argument('--model-dir', help='OPUS-MT 模型根目录')
     args = parser.parse_args()
-    
+
     server = LlmServer(args.model_dir)
     server.run()
 

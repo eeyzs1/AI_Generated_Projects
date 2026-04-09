@@ -1,5 +1,5 @@
 name: rfdictionary
-description: "完全免费的字典 - 跨平台英汉词典应用"
+description: "11Translator - 跨平台翻译词典应用"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -24,6 +24,7 @@ dependencies:
   sqflite: ^2.3.3+1
   sqflite_common_ffi: ^2.3.3
   hive_flutter: ^1.1.0
+  hive: ^2.2.3
 
   # TTS
   flutter_tts: ^4.0.2
@@ -52,6 +53,9 @@ dependencies:
   # 压缩文件处理
   archive: ^3.6.1
 
+  # 集合工具
+  collection: ^1.18.0
+
   # LLM 本地推理（使用命令行 llama.cpp）
 
 dev_dependencies:
@@ -64,6 +68,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/qwen2.5-0.5b-instruct-q4_k_m.gguf
-    - assets/qwen2.5-1.5b-instruct-q4_k_m.gguf

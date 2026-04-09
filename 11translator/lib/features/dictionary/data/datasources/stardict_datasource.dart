@@ -1,22 +1,17 @@
-import 'dart:convert';
-import 'dart:io';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
+import 'package:rfdictionary/features/dictionary/domain/dictionary_repository.dart';
 import 'package:rfdictionary/features/dictionary/domain/entities/word_entry.dart';
 import 'package:rfdictionary/features/llm/data/datasources/python_llm_datasource.dart';
 
-class StarDictDataSource {
+class StarDictDataSource implements DictionaryRepository {
+  final PythonLlmDataSource? _pythonDataSource;
   String? _dictPath;
-  PythonLlmDataSource? _pythonDataSource;
   bool _isDictionaryLoaded = false;
 
-  StarDictDataSource();
+  StarDictDataSource({PythonLlmDataSource? pythonDataSource})
+      : _pythonDataSource = pythonDataSource;
 
-  void setPythonDataSource(PythonLlmDataSource? dataSource) {
-    _pythonDataSource = dataSource;
-  }
-
-  void setDictionaryPath(String? path) {
+  @override
+  Future<void> setPath(String? path) async {
     _dictPath = path;
     _isDictionaryLoaded = false;
   }
@@ -25,20 +20,21 @@ class StarDictDataSource {
     if (_pythonDataSource == null) {
       return null;
     }
-    return await _pythonDataSource!.extractDictionary(archivePath, outputDir);
+    return await _pythonDataSource.extractDictionary(archivePath, outputDir);
   }
 
   Future<bool> loadDictionary() async {
     if (_pythonDataSource == null || _dictPath == null) {
       return false;
     }
-    final success = await _pythonDataSource!.loadDictionary(_dictPath!);
+    final success = await _pythonDataSource.loadDictionary(_dictPath!);
     if (success) {
       _isDictionaryLoaded = true;
     }
     return success;
   }
 
+  @override
   Future<WordEntry?> getWord(String word) async {
     if (_pythonDataSource == null || _dictPath == null) {
       return null;
@@ -51,7 +47,7 @@ class StarDictDataSource {
       }
     }
 
-    final result = await _pythonDataSource!.lookupWord(_dictPath!, word);
+    final result = await _pythonDataSource.lookupWord(_dictPath!, word);
     if (result == null || result['found'] != true) {
       return null;
     }
@@ -79,18 +75,18 @@ class StarDictDataSource {
           definitions.add(Definition(
             partOfSpeech: partOfSpeech,
             chinese: chinese,
-          ));
+          ),);
         }
-      } else if (trimmed.startsWith('例：') || trimmed.startsWith('例句：')) {
-        final exampleText = trimmed.substring(trimmed.indexOf('：') + 1).trim();
+      } else if (trimmed.startsWith('\u4F8B\uFF1A') || trimmed.startsWith('\u4F8B\u53E5\uFF1A')) {
+        final exampleText = trimmed.substring(trimmed.indexOf('\uFF1A') + 1).trim();
         examples.add(ExampleSentence(
           english: exampleText,
-        ));
+        ),);
       } else if (definitions.isEmpty) {
         definitions.add(Definition(
           partOfSpeech: '',
           chinese: trimmed,
-        ));
+        ),);
       }
     }
 
@@ -98,7 +94,7 @@ class StarDictDataSource {
       definitions.add(Definition(
         partOfSpeech: '',
         chinese: definition,
-      ));
+      ),);
     }
 
     return WordEntry(

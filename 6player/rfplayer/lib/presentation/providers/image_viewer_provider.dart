@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:saf_stream/saf_stream.dart';
 import '../../core/extensions/string_extensions.dart';
 import '../../core/utils/real_path_utils.dart';
 
@@ -15,7 +14,6 @@ class ImageInfo {
   final int fileSize;
   final DateTime modifiedAt;
   final String format;
-  final Uint8List? bytes;
 
   ImageInfo({
     required this.fileName,
@@ -25,7 +23,6 @@ class ImageInfo {
     required this.fileSize,
     required this.modifiedAt,
     required this.format,
-    this.bytes,
   });
 }
 
@@ -41,7 +38,8 @@ class ImageViewerState {
   final ImageInfo? imageInfo;
   final bool isLoading;
   final String? customFileName;
-  final Uint8List? initialBytes;
+
+  static const _sentinel = Object();
 
   ImageViewerState({
     required this.currentPath,
@@ -55,7 +53,6 @@ class ImageViewerState {
     this.imageInfo,
     this.isLoading = false,
     this.customFileName,
-    this.initialBytes,
   });
 
   String get currentFileName {
@@ -75,10 +72,9 @@ class ImageViewerState {
     bool? isFlippedHorizontal,
     bool? isFlippedVertical,
     double? currentScale,
-    ImageInfo? imageInfo,
+    Object? imageInfo = _sentinel,
     bool? isLoading,
-    String? customFileName,
-    Uint8List? initialBytes,
+    Object? customFileName = _sentinel,
   }) {
     return ImageViewerState(
       currentPath: currentPath ?? this.currentPath,
@@ -89,16 +85,15 @@ class ImageViewerState {
       isFlippedHorizontal: isFlippedHorizontal ?? this.isFlippedHorizontal,
       isFlippedVertical: isFlippedVertical ?? this.isFlippedVertical,
       currentScale: currentScale ?? this.currentScale,
-      imageInfo: imageInfo ?? this.imageInfo,
+      imageInfo: identical(imageInfo, _sentinel) ? this.imageInfo : imageInfo as ImageInfo?,
       isLoading: isLoading ?? this.isLoading,
-      customFileName: customFileName ?? this.customFileName,
-      initialBytes: initialBytes ?? this.initialBytes,
+      customFileName: identical(customFileName, _sentinel) ? this.customFileName : customFileName as String?,
     );
   }
 }
 
 class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
-  final SafStream _safStream = SafStream();
+  Uint8List? _initialBytes;
 
   ImageViewerNotifier(String initialPath, {String? customFileName, Uint8List? initialBytes}) : super(
     ImageViewerState(
@@ -107,9 +102,9 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
       imagePaths: [initialPath],
       isLoading: true,
       customFileName: customFileName,
-      initialBytes: initialBytes,
     ),
   ) {
+    _initialBytes = initialBytes;
     _initialize();
   }
   
@@ -188,84 +183,37 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
     return extension.isEmpty ? 'UNKNOWN' : extension;
   }
 
-  String? _tryExtractRealPathFromContentUri(String contentUri) {
-    debugPrint('[ImageViewerProvider] 尝试从 content URI 提取真实路径: $contentUri');
-    
-    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
-    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
-    if (contentUri.contains('/document/')) {
-      final parts = contentUri.split('/document/');
-      if (parts.length == 2) {
-        final encodedPath = parts[1];
-        debugPrint('[ImageViewerProvider] 找到编码部分: $encodedPath');
-        
-        // 检查常见的前缀并移除
-        String pathToDecode = encodedPath;
-        if (pathToDecode.startsWith('raw%3A')) {
-          pathToDecode = pathToDecode.substring(6);
-          debugPrint('[ImageViewerProvider] 移除 raw: 前缀');
-        } else if (pathToDecode.startsWith('msf%3A')) {
-          debugPrint('[ImageViewerProvider] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
-          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
-          return null;
-        }
-        
-        // URL 解码
-        try {
-          final decodedPath = Uri.decodeComponent(pathToDecode);
-          debugPrint('[ImageViewerProvider] URL 解码后: $decodedPath');
-          
-          // 检查是否是一个绝对路径
-          if (decodedPath.startsWith('/')) {
-            debugPrint('[ImageViewerProvider] 提取到真实路径: $decodedPath');
-            return decodedPath;
-          }
-        } catch (e) {
-          debugPrint('[ImageViewerProvider] URL 解码失败: $e');
-        }
-      }
-    }
-    
-    debugPrint('[ImageViewerProvider] 无法从 content URI 提取真实路径');
-    return null;
-  }
-
   Future<void> _loadImageInfo() async {
-    debugPrint('[ImageViewerProvider] ======== 加载图片信息 ========');
-    debugPrint('[ImageViewerProvider] currentPath: ${state.currentPath}');
-    debugPrint('[ImageViewerProvider] customFileName: ${state.customFileName}');
-    debugPrint('[ImageViewerProvider] initialBytes: ${state.initialBytes != null ? '有数据' : '无数据'}');
-    
     try {
       Uint8List bytes;
       String fileName;
       final effectivePath = state.currentPath;
-      
-      // 优先使用从路由传递过来的 initialBytes
-      if (state.initialBytes != null) {
-        debugPrint('[ImageViewerProvider] 使用 initialBytes');
-        bytes = state.initialBytes!;
+
+      if (_initialBytes != null) {
+        bytes = _initialBytes!;
         fileName = state.customFileName ?? p.basename(effectivePath);
       } else {
-        debugPrint('[ImageViewerProvider] 处理普通文件');
         final file = File(effectivePath);
         if (!await file.exists()) {
-          debugPrint('[ImageViewerProvider] 文件不存在');
           return;
         }
         bytes = await file.readAsBytes();
         fileName = p.basename(effectivePath);
       }
-      
-      debugPrint('[ImageViewerProvider] 读取成功，字节数: ${bytes.length}');
-      
+
       final image = await decodeImageFromList(bytes);
       final format = _inferImageFormat(bytes, fileName);
-      
-      final stat = await File(effectivePath).stat();
-      final fileSize = stat.size;
-      final modifiedAt = stat.modified;
-      
+
+      int fileSize = bytes.length;
+      DateTime modifiedAt = DateTime.now();
+      if (_initialBytes == null) {
+        try {
+          final stat = await File(effectivePath).stat();
+          fileSize = stat.size;
+          modifiedAt = stat.modified;
+        } catch (_) {}
+      }
+
       state = state.copyWith(
         imageInfo: ImageInfo(
           fileName: fileName,
@@ -275,12 +223,10 @@ class ImageViewerNotifier extends StateNotifier<ImageViewerState> {
           fileSize: fileSize,
           modifiedAt: modifiedAt,
           format: format,
-          bytes: bytes,
         ),
       );
-      debugPrint('[ImageViewerProvider] 图片信息加载完成，格式: $format, 路径: $effectivePath');
     } catch (e, stackTrace) {
-      debugPrint('[ImageViewerProvider] 加载图片信息失败: $e');
+      debugPrint('[ImageViewerProvider] Failed to load image info: $e');
       debugPrint('[ImageViewerProvider] Stack trace: $stackTrace');
     }
   }

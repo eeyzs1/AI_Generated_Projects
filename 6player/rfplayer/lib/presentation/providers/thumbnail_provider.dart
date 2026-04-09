@@ -28,10 +28,11 @@ final cachedThumbnailProvider = FutureProvider.family<String?, String>((ref, fil
 /// 批量获取多个文件的缩略图
 final batchThumbnailsProvider = FutureProvider.family<Map<String, String?>, List<String>>((ref, filePaths) async {
   final service = ref.read(thumbnailServiceProvider);
-  final results = <String, String?>{};  
-  for (final path in filePaths) {
+  final results = <String, String?>{};
+  final futures = filePaths.map((path) async {
     results[path] = await service.getThumbnail(path);
-  }
+  });
+  await Future.wait(futures);
   return results;
 });
 

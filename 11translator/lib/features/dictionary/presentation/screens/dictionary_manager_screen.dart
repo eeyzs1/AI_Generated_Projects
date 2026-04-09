@@ -15,10 +15,6 @@ class DictionaryManagerScreen extends ConsumerStatefulWidget {
 }
 
 class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScreen> {
-  bool _isChecking = false;
-  String? _currentPath;
-  bool _dictionaryExists = false;
-
   @override
   void initState() {
     super.initState();
@@ -26,80 +22,21 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
   }
 
   Future<void> _loadDictionaryStatus() async {
-    setState(() {
-      _isChecking = true;
-    });
-
     final manager = ref.read(dictionaryManagerProvider.notifier);
-    _currentPath = await manager.getDictionaryPath();
-    _dictionaryExists = await manager.isDictionaryAvailable();
+    await manager.getDictionaryPath();
+    await manager.isDictionaryAvailable();
 
-    setState(() {
-      _isChecking = false;
-    });
-  }
-
-  Future<void> _selectDictionaryFile() async {
-    final l10n = AppLocalizations.of(context);
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['db', 'sqlite', 'sqlite3', 'zip'],
-      dialogTitle: l10n.selectDictionaryFile,
-    );
-
-    if (result != null && result.files.single.path != null) {
-      final filePath = result.files.single.path!;
-      final file = File(filePath);
-      
-      if (await file.exists()) {
-        final manager = ref.read(dictionaryManagerProvider.notifier);
-        await manager.setDictionaryPath(filePath);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l10n.dictionaryReady)),
-          );
-          await _loadDictionaryStatus();
-        }
-      }
-    }
-  }
-
-  Future<void> _clearDictionary() async {
-    final l10n = AppLocalizations.of(context);
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.clearSettings),
-        content: Text(l10n.pleaseSelectDictionary),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(l10n.ok),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      final manager = ref.read(dictionaryManagerProvider.notifier);
-      await manager.clearDictionaryPath();
-      if (mounted) {
-        await _loadDictionaryStatus();
-      }
+    if (mounted) {
+      setState(() {});
     }
   }
 
   Future<void> _startDownload() async {
     final l10n = AppLocalizations.of(context);
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+    final String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
       dialogTitle: l10n.downloadDictionary,
     );
-    
+
     final manager = ref.read(dictionaryManagerProvider.notifier);
     await manager.startDownload(customDirectory: selectedDirectory);
   }
@@ -166,7 +103,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          
+
           final downloadedDicts = snapshot.data!;
           final downloadedDictTypes = DictionaryType.values.where((type) => downloadedDicts[type] ?? false).toList();
 
@@ -185,55 +122,55 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                       ),
                       const SizedBox(height: 16),
                       ...DictionaryType.values.map((type) {
-                        final isSelected = type == dictState.type;
                         final isDownloaded = downloadedDicts[type] ?? false;
-                        return RadioListTile<DictionaryType>(
-                          title: Text(type.displayName),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(type.description),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Text(
-                                    '${l10n.fileSize}: ${type.sizeInfo}',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.secondary,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (isDownloaded)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        l10n.installed,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          value: type,
+                        return RadioGroup<DictionaryType>(
                           groupValue: dictState.type,
                           onChanged: dictState.downloadStatus == DownloadStatus.downloading
-                              ? null
-                              : (value) async {
+                              ? (_) {}
+                              : (value) {
                                   if (value != null) {
-                                    await manager.selectDictionary(value);
-                                    await _loadDictionaryStatus();
+                                    manager.selectDictionary(value).then((_) => _loadDictionaryStatus());
                                   }
                                 },
+                          child: RadioListTile<DictionaryType>(
+                            title: Text(type.displayName),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(type.description),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '${l10n.fileSize}: ${type.sizeInfo}',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.secondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    if (isDownloaded)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          l10n.installed,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            value: type,
+                          ),
                         );
                       }),
                     ],
@@ -241,7 +178,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               if (dictState.downloadStatus != DownloadStatus.idle)
                 Card(
                   child: Padding(
@@ -254,7 +191,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 16),
-                        
+
                         if (dictState.downloadStatus == DownloadStatus.downloading) ...[
                           LinearProgressIndicator(
                             value: dictState.downloadProgress,
@@ -292,7 +229,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                         ] else if (dictState.downloadStatus == DownloadStatus.completed) ...[
                           Row(
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.check_circle,
                                 color: Colors.green,
                                 size: 32,
@@ -391,7 +328,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                   ),
                 ),
               const SizedBox(height: 16),
-              
+
               if (dictState.downloadStatus == DownloadStatus.idle)
                 Card(
                   child: Padding(
@@ -443,9 +380,9 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                     ),
                   ),
                 ),
-              
+
               const SizedBox(height: 16),
-              
+
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -453,12 +390,12 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Select Installed Dictionaries / 选择已安装的词典',
+                        'Select Installed Dictionaries / \u9009\u62E9\u5DF2\u5B89\u88C5\u7684\u8BCD\u5178',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '选择要使用的词典（可多选）',
+                        '\u9009\u62E9\u8981\u4F7F\u7528\u7684\u8BCD\u5178\uFF08\u53EF\u591A\u9009\uFF09',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.secondary,
                         ),
@@ -505,7 +442,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                       const Divider(),
                       const SizedBox(height: 16),
                       Text(
-                        'Available Language Pairs / 可用的语言对',
+                        'Available Language Pairs / \u53EF\u7528\u7684\u8BED\u8A00\u5BF9',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 12),
@@ -514,12 +451,12 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                           leading: const Icon(Icons.translate),
                           title: Text(pair.displayName),
                         );
-                      }).toList(),
+                      }),
                       if (_getAvailableLanguagePairs(dictState.selectedDictionaries).isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            '请先选择词典 / Please select dictionaries first',
+                            '\u8BF7\u5148\u9009\u62E9\u8BCD\u5178 / Please select dictionaries first',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.error,
                             ),
@@ -529,7 +466,7 @@ class _DictionaryManagerScreenState extends ConsumerState<DictionaryManagerScree
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
               Card(
                 child: Padding(

@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rfdictionary/core/di/providers.dart';
 import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/features/translation/domain/entities/language.dart';
 import 'package:rfdictionary/features/translation/presentation/providers/translation_provider.dart';
@@ -84,7 +83,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
             IconButton(
               onPressed: () => notifier.swapLanguages(),
               icon: const Icon(Icons.swap_horiz),
-              tooltip: '交换语言',
+              tooltip: l10n.swapLanguages,
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -106,7 +105,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: DropdownButtonHideUnderline(
@@ -145,7 +144,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '源文本',
+                  l10n.sourceText,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 if (state.sourceText.isNotEmpty)
@@ -155,7 +154,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                       notifier.clear();
                     },
                     icon: const Icon(Icons.close),
-                    tooltip: '清空',
+                    tooltip: l10n.clearText,
                   ),
               ],
             ),
@@ -165,7 +164,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               maxLines: 5,
               minLines: 3,
               decoration: InputDecoration(
-                hintText: '输入要翻译的文本...',
+                hintText: l10n.inputToTranslate,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -195,7 +194,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.translate),
-      label: Text(state.isTranslating ? '翻译中...' : '翻译'),
+      label: Text(state.isTranslating ? l10n.translating : l10n.translate),
       style: FilledButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(
@@ -231,7 +230,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => notifier.translate(),
-                child: const Text('重试'),
+                child: Text(l10n.retry),
               ),
             ],
           ),
@@ -245,15 +244,15 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Padding(
-          padding: EdgeInsets.all(32.0),
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
           child: Column(
             children: [
-              Icon(Icons.translate_outlined, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
+              const Icon(Icons.translate_outlined, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
               Text(
-                '翻译结果将显示在这里',
-                style: TextStyle(color: Colors.grey),
+                l10n.translationResultWillAppear,
+                style: const TextStyle(color: Colors.grey),
               ),
             ],
           ),
@@ -262,13 +261,13 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
     }
 
     if (state.isWordOrPhrase && state.hasDictionaryResult) {
-      return _buildDictionaryResult(state);
+      return _buildDictionaryResult(l10n, state);
     } else {
-      return _buildSimpleResult(state);
+      return _buildSimpleResult(l10n, state);
     }
   }
 
-  Widget _buildDictionaryResult(TranslationState state) {
+  Widget _buildDictionaryResult(AppLocalizations l10n, TranslationState state) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -283,7 +282,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '详细释义',
+                  l10n.detailedDefinition,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 IconButton(
@@ -291,27 +290,27 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                     final buffer = StringBuffer();
                     buffer.writeln(state.targetText);
                     if (state.phonetic != null) {
-                      buffer.writeln('\n音标：${state.phonetic}');
+                      buffer.writeln('\n${l10n.phonetic}：${state.phonetic}');
                     }
                     if (state.definitions != null && state.definitions!.isNotEmpty) {
-                      buffer.writeln('\n释义：');
+                      buffer.writeln('\n${l10n.definition}：');
                       for (int i = 0; i < state.definitions!.length; i++) {
                         buffer.writeln('${i + 1}. ${state.definitions![i]}');
                       }
                     }
                     if (state.examples != null && state.examples!.isNotEmpty) {
-                      buffer.writeln('\n例句：');
+                      buffer.writeln('\n${l10n.example}：');
                       for (int i = 0; i < state.examples!.length; i++) {
                         buffer.writeln('${i + 1}. ${state.examples![i]}');
                       }
                     }
                     Clipboard.setData(ClipboardData(text: buffer.toString()));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已复制到剪贴板')),
+                      SnackBar(content: Text(l10n.copiedToClipboard)),
                     );
                   },
                   icon: const Icon(Icons.copy),
-                  tooltip: '复制全部',
+                  tooltip: l10n.copyAll,
                 ),
               ],
             ),
@@ -338,7 +337,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                   Icon(Icons.record_voice_over, size: 20, color: Theme.of(context).colorScheme.secondary),
                   const SizedBox(width: 8),
                   Text(
-                    '音标',
+                    l10n.phonetic,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -349,7 +348,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SelectableText(
@@ -367,7 +366,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                   Icon(Icons.description, size: 20, color: Theme.of(context).colorScheme.secondary),
                   const SizedBox(width: 8),
                   Text(
-                    '释义',
+                    l10n.definition,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -406,7 +405,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                   Icon(Icons.format_quote, size: 20, color: Theme.of(context).colorScheme.secondary),
                   const SizedBox(width: 8),
                   Text(
-                    '例句',
+                    l10n.example,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -421,7 +420,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -452,7 +451,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
     );
   }
 
-  Widget _buildSimpleResult(TranslationState state) {
+  Widget _buildSimpleResult(AppLocalizations l10n, TranslationState state) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -467,18 +466,18 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '翻译结果',
+                  l10n.translationResult,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 IconButton(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: state.targetText));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已复制到剪贴板')),
+                      SnackBar(content: Text(l10n.copiedToClipboard)),
                     );
                   },
                   icon: const Icon(Icons.copy),
-                  tooltip: '复制',
+                  tooltip: l10n.copy,
                 ),
               ],
             ),
@@ -487,7 +486,7 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: SelectableText(

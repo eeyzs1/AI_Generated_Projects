@@ -24,6 +24,8 @@ class AppLocalizations {
 
   // App 通用
   String get appName => localizedStrings['appName']!;
+  String get home => localizedStrings['home']!;
+  String get files => localizedStrings['files']!;
   String get recentPlays => localizedStrings['recentPlays']!;
   String get bookmarks => localizedStrings['bookmarks']!;
   String get noRecentPlays => localizedStrings['noRecentPlays']!;

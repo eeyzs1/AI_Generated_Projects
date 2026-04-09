@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/features/llm/domain/model_manager.dart';
 import 'package:rfdictionary/features/dictionary/domain/dictionary_manager.dart';
-import 'package:rfdictionary/presentation/shell/main_shell.dart';
 
 class InitScreen extends ConsumerStatefulWidget {
   const InitScreen({super.key});
@@ -13,7 +14,7 @@ class InitScreen extends ConsumerStatefulWidget {
 
 class _InitScreenState extends ConsumerState<InitScreen> {
   double _progress = 0.0;
-  String _status = '正在初始化...';
+  String _statusKey = 'initializing';
 
   @override
   void initState() {
@@ -24,53 +25,54 @@ class _InitScreenState extends ConsumerState<InitScreen> {
   Future<void> _initApp() async {
     try {
       setState(() {
-        _status = '正在加载模型管理器...';
+        _statusKey = 'loadingModelManager';
         _progress = 0.3;
       });
       
-      // 加载选中的模型
       await ref.read(modelManagerProvider.notifier).loadSavedModel();
       
       setState(() {
-        _status = '正在加载词典管理器...';
+        _statusKey = 'loadingDictionaryManager';
         _progress = 0.6;
       });
       
-      // 加载保存的词典设置
       await ref.read(dictionaryManagerProvider.notifier).loadSavedDictionary();
       
       setState(() {
-        _status = '初始化完成！';
+        _statusKey = 'initComplete';
         _progress = 1.0;
       });
 
-      // 延迟一下显示状态
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainShell()),
-        );
+        context.go('/');
       }
     } catch (e) {
       setState(() {
-        _status = '初始化失败: $e';
+        _statusKey = 'initFailed';
         _progress = 1.0;
       });
-      // 即使失败也进入应用
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainShell()),
-        );
+        context.go('/');
       }
     }
   }
 
+  String _getLocalizedStatus(AppLocalizations l10n) {
+    return switch (_statusKey) {
+      'loadingModelManager' => l10n.loadingModelManager,
+      'loadingDictionaryManager' => l10n.loadingDictionaryManager,
+      'initComplete' => l10n.initComplete,
+      'initFailed' => l10n.initFailed,
+      _ => l10n.initializing,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: Center(
         child: Padding(
@@ -97,7 +99,7 @@ class _InitScreenState extends ConsumerState<InitScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                _status,
+                _getLocalizedStatus(l10n),
                 style: Theme.of(context).textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),

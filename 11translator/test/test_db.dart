@@ -11,7 +11,7 @@ void main() async {
   final dir = await getApplicationDocumentsDirectory();
   final dbPath = path.join(dir.path, 'stardict.db');
   
-  print('数据库路径: $dbPath');
+  print('数据库路�? $dbPath');
   print('文件存在: ${File(dbPath).existsSync()}');
   
   if (File(dbPath).existsSync()) {
@@ -21,15 +21,15 @@ void main() async {
     print('\n=== 数据库表 ===');
     final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
     for (var table in tables) {
-      print('表: ${table['name']}');
+      print('�? ${table['name']}');
     }
     
-    // 查看 words 表结构（如果存在）
-    print('\n=== 表结构 ===');
+    // 查看 words 表结构（如果存在�?
+    print('\n=== 表结�?===');
     try {
       final schema = await db.rawQuery("PRAGMA table_info(words)");
       for (var col in schema) {
-        print('列: ${col['name']} (${col['type']})');
+        print('�? ${col['name']} (${col['type']})');
       }
     } catch (e) {
       print('words 表不存在: $e');
@@ -40,11 +40,11 @@ void main() async {
         print('\n=== 尝试查看第一个表: $firstTableName ===');
         final schema = await db.rawQuery("PRAGMA table_info($firstTableName)");
         for (var col in schema) {
-          print('列: ${col['name']} (${col['type']})');
+          print('�? ${col['name']} (${col['type']})');
         }
         
-        // 查看第一条数据
-        print('\n=== 第一条数据 ===');
+        // 查看第一条数�?
+        print('\n=== 第一条数�?===');
         final rows = await db.query(firstTableName as String, limit: 1);
         if (rows.isNotEmpty) {
           print(rows.first);

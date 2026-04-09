@@ -10,6 +10,8 @@ class FileBrowserState {
   final bool isLoading;
   final String? error;
 
+  static const _sentinel = Object();
+
   FileBrowserState({
     required this.currentPath,
     required this.entries,
@@ -21,13 +23,13 @@ class FileBrowserState {
     String? currentPath,
     List<FileSystemEntity>? entries,
     bool? isLoading,
-    String? error,
+    Object? error = _sentinel,
   }) {
     return FileBrowserState(
       currentPath: currentPath ?? this.currentPath,
       entries: entries ?? this.entries,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: identical(error, _sentinel) ? this.error : error as String?,
     );
   }
 }
@@ -37,9 +39,9 @@ final fileBrowserProvider = StateNotifierProvider<FileBrowserNotifier, FileBrows
 });
 
 class FileBrowserNotifier extends StateNotifier<FileBrowserState> {
-  final Ref ref;
+  final Ref _ref;
 
-  FileBrowserNotifier(this.ref) : super(
+  FileBrowserNotifier(this._ref) : super(
     FileBrowserState(
       currentPath: 'C:\\',
       entries: [],
@@ -67,7 +69,7 @@ class FileBrowserNotifier extends StateNotifier<FileBrowserState> {
         throw Exception('目录不存在');
       }
 
-      final showHiddenFiles = ref.watch(settingsProvider).showHiddenFiles;
+      final showHiddenFiles = _ref.read(settingsProvider).showHiddenFiles;
       final entries = await directory.list().toList();
       
       // 过滤隐藏文件

@@ -43,7 +43,22 @@ class HistoryRepository {
   }
 
   Future<void> updateThumbnail(String path, String thumbnailPath) async {
-    // 更新缩略图路径的逻辑
+    final history = await getByPath(path);
+    if (history != null) {
+      final updated = PlayHistory(
+        id: history.id,
+        path: history.path,
+        displayName: history.displayName,
+        extension: history.extension,
+        type: history.type,
+        thumbnailPath: thumbnailPath,
+        lastPosition: history.lastPosition,
+        totalDuration: history.totalDuration,
+        lastPlayedAt: history.lastPlayedAt,
+        playCount: history.playCount,
+      );
+      await upsert(updated);
+    }
   }
 
   Stream<List<PlayHistory>> watchHistory({int limit = 50}) {

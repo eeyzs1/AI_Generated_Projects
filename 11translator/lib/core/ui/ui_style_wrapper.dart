@@ -13,8 +13,6 @@ class UIStyleWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.watch(settingsProvider.notifier);
-    
-    final l10n = AppLocalizations.of(context);
 
     UIStyle effectiveStyle = settings.uiStyle;
     if (effectiveStyle == UIStyle.adaptive) {
@@ -24,7 +22,7 @@ class UIStyleWrapper extends ConsumerWidget {
     if (effectiveStyle == UIStyle.fluent) {
       return fluent.FluentApp(
         title: 'RFDictionary',
-        localizationsDelegates: [
+        localizationsDelegates: const [
           AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -53,12 +51,12 @@ class UIStyleWrapper extends ConsumerWidget {
 
     return MaterialApp(
       title: 'RFDictionary',
-      localizationsDelegates: [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
       supportedLocales: const [
         Locale('en'),
         Locale('zh'),

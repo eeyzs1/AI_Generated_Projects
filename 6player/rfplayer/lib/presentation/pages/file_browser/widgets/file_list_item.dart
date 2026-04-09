@@ -55,11 +55,9 @@ class FileListItem extends ConsumerWidget {
             if (isDirectory) {
               ref.read(fileBrowserProvider.notifier).navigateTo(entity.path);
             } else if (isVideo) {
-              // 跳转到视频播放器
-              appRouter.push('/video-player', extra: entity.path);
+              appRouter.push('/video-player', extra: {'path': entity.path});
             } else if (isImage) {
-              // 跳转到图片查看器
-              appRouter.push('/image-viewer', extra: entity.path);
+              appRouter.push('/image-viewer', extra: {'path': entity.path});
             }
           },
         );

@@ -13,7 +13,6 @@ class MaterialShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final settingsNotifier = ref.watch(settingsProvider.notifier);
-    final l10n = AppLocalizations.of(context);
 
     final List<Widget> screens = [
       const TranslationScreen(),
@@ -32,26 +31,26 @@ class MaterialShell extends ConsumerWidget {
         onDestinationSelected: (index) {
           settingsNotifier.setCurrentIndex(index);
         },
-        destinations: [
+        destinations: const [
           NavigationDestination(
-            icon: const Icon(Icons.translate_outlined),
-            selectedIcon: const Icon(Icons.translate),
-            label: '翻译',
+            icon: Icon(Icons.translate_outlined),
+            selectedIcon: Icon(Icons.translate),
+            label: '\u7FFB\u8BD1',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.star_outlined),
-            selectedIcon: const Icon(Icons.star),
-            label: l10n.favorites,
+            icon: Icon(Icons.star_outlined),
+            selectedIcon: Icon(Icons.star),
+            label: 'Favorites',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.history),
-            selectedIcon: const Icon(Icons.history),
-            label: l10n.history,
+            icon: Icon(Icons.history),
+            selectedIcon: Icon(Icons.history),
+            label: 'History',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            selectedIcon: const Icon(Icons.settings),
-            label: l10n.settings,
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

@@ -8,13 +8,13 @@ import 'package:rfdictionary/features/main/presentation/screens/init_screen.dart
 
 fluent.AccentColor _toFluentAccentColor(Color color) {
   return fluent.AccentColor.swatch({
-    'darkest': color.withOpacity(0.2),
-    'darker': color.withOpacity(0.4),
-    'dark': color.withOpacity(0.6),
+    'darkest': color.withValues(alpha: 0.2),
+    'darker': color.withValues(alpha: 0.4),
+    'dark': color.withValues(alpha: 0.6),
     'normal': color,
-    'light': color.withOpacity(0.8),
-    'lighter': color.withOpacity(0.6),
-    'lightest': color.withOpacity(0.4),
+    'light': color.withValues(alpha: 0.8),
+    'lighter': color.withValues(alpha: 0.6),
+    'lightest': color.withValues(alpha: 0.4),
   });
 }
 
@@ -28,7 +28,7 @@ class App extends ConsumerWidget {
 
     UIStyle effectiveStyle = settings.uiStyle;
     if (effectiveStyle == UIStyle.adaptive) {
-      effectiveStyle = PlatformUtils.isWindows ? UIStyle.fluent : UIStyle.material3;
+      effectiveStyle = PlatformUtils.isDesktop ? UIStyle.fluent : UIStyle.material3;
     }
 
     final bool isFluent = effectiveStyle == UIStyle.fluent;

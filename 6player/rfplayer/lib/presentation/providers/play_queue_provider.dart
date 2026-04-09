@@ -13,11 +13,10 @@ final playQueueProvider = StateNotifierProvider<PlayQueueNotifier, List<PlayQueu
 });
 
 class PlayQueueNotifier extends StateNotifier<List<PlayQueueItem>> {
-  final Ref ref;
-  late final PlayQueueService _service;
+  final Ref _ref;
+  PlayQueueService get _service => _ref.read(playQueueServiceProvider);
 
-  PlayQueueNotifier(this.ref) : super([]) {
-    _service = ref.read(playQueueServiceProvider);
+  PlayQueueNotifier(this._ref) : super([]) {
     _loadQueue();
   }
 

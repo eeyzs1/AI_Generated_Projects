@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class RealPathUtils {
-  static const MethodChannel _channel = MethodChannel('com.example.rfplayer/real_path');
+  static const MethodChannel _channel = MethodChannel('com.rfplayer.app/real_path');
 
   /// 检查路径是否是 content URI
   static bool isContentUri(String path) {

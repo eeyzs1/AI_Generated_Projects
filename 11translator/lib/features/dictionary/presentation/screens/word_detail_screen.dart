@@ -35,21 +35,21 @@ class WordDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              '/ˈwɜːrd/',
+              '/\u02C8w\u025C\u02D0rd/',
               style: TextStyle(
                 fontSize: 18,
                 color: Color(0xFFE8002D),
               ),
             ),
             const SizedBox(height: 24),
-            Card(
+            const Card(
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'n. 单词；话语；消息；诺言；命令',
+                    Text(
+                      'n. \u5355\u8BCD\uFF1B\u8BDD\u8BED\uFF1B\u6D88\u606F\uFF1B\u8BFA\u8A00\uFF1B\u547D\u4EE4',
                       style: TextStyle(fontSize: 16),
                     ),
                   ],

@@ -5,74 +5,95 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:rfdictionary/features/llm/domain/llm_service.dart';
 
+class _PendingRequest {
+  final String requestId;
+  final String responseType;
+  final Completer<dynamic> completer;
+  late final StreamSubscription<Map<String, dynamic>> subscription;
+  Timer? timeoutTimer;
+
+  _PendingRequest({
+    required this.requestId,
+    required this.responseType,
+    required this.completer,
+  });
+}
+
+class _PendingStreamRequest {
+  final String requestId;
+  final StreamController<String> responseController;
+  final List<String> stopTokens;
+  final StringBuffer accumulatedText = StringBuffer();
+  bool hasStartedOutput = false;
+  late StreamSubscription<Map<String, dynamic>> subscription;
+  Timer? timeoutTimer;
+
+  _PendingStreamRequest({
+    required this.requestId,
+    required this.responseController,
+    required this.stopTokens,
+  });
+}
+
 class PythonLlmDataSource implements LlmDataSource {
   Process? _process;
-  String? _modelPath;
   final Completer<void> _readyCompleter = Completer<void>();
-  final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
+  final StreamController<Map<String, dynamic>> _messageController =
+      StreamController.broadcast();
+  final Map<String, _PendingRequest> _pendingRequests = {};
+  final Map<String, _PendingStreamRequest> _pendingStreamRequests = {};
   bool _isReady = false;
   bool _isDisposed = false;
+  int _requestIdCounter = 0;
+
+  String _nextRequestId() {
+    _requestIdCounter++;
+    return '$_requestIdCounter';
+  }
 
   @override
   Future<void> loadModel(String modelPath) async {
     if (_isDisposed) throw StateError('DataSource is disposed');
-    
-    _modelPath = modelPath;
-    
-    // 找到 Python 解释器
+
     final pythonPath = await _findPython();
     if (pythonPath == null) {
       throw StateError(
-        '未找到 Python 解释器！\n'
-        '请安装 Python 并添加到系统 PATH。',
+        '\u672A\u627E\u5230 Python \u89E3\u91CA\u5668\uFF01\n'
+        '\u8BF7\u5B89\u88C5 Python \u5E76\u6DFB\u52A0\u5230\u7CFB\u7EDF PATH',
       );
     }
 
-    // 找到 Python 后端脚本
     final scriptPath = await _findPythonScript();
     if (scriptPath == null) {
-      throw StateError('未找到 Python 后端脚本！');
+      throw StateError('\u672A\u627E\u5230 Python \u540E\u7AEF\u811A\u672C');
     }
 
-    // 启动 Python 进程
     try {
       _process = await Process.start(
         pythonPath,
         [scriptPath, '--model', modelPath],
       );
 
-      // 监听 stdout
-      _process!.stdout
-          .transform(utf8.decoder)
-          .listen((data) {
-            _processStdout(data);
-          });
-
-      // 监听 stderr（日志输出）
-      _process!.stderr
-          .transform(utf8.decoder)
-          .listen((data) {
-            print('[Python LLM] $data');
-            _processStderr(data);
-          });
-
-      // 监听进程退出
-      _process!.exitCode.then((code) {
-        if (!_isDisposed) {
-          print('[Python LLM] 进程退出，代码: $code');
-        }
+      _process!.stdout.transform(utf8.decoder).listen((data) {
+        _processStdout(data);
       });
 
-      // 等待 Python 服务就绪
+      _process!.stderr.transform(utf8.decoder).listen((data) {
+        _processStderr(data);
+      });
+
+      _process!.exitCode.then((code) {
+        if (!_isDisposed) {}
+      });
+
       await _readyCompleter.future.timeout(
         const Duration(seconds: 120),
         onTimeout: () {
-          throw StateError('Python 服务启动超时（2分钟）');
+          throw StateError('Python \u670D\u52A1\u542F\u52A8\u8D85\u65F6\uFF082\u5206\u949F\uFF09');
         },
       );
-      
+
       _isReady = true;
-      
     } catch (e) {
       await dispose();
       rethrow;
@@ -81,7 +102,7 @@ class PythonLlmDataSource implements LlmDataSource {
 
   Future<String?> _findPython() async {
     final possibleNames = ['python', 'python3', 'py'];
-    
+
     for (final name in possibleNames) {
       try {
         final result = await Process.run(name, ['--version']);
@@ -92,57 +113,140 @@ class PythonLlmDataSource implements LlmDataSource {
         continue;
       }
     }
-    
+
     return null;
   }
 
   Future<String?> _findPythonScript() async {
-    final scriptName = 'llm_server.py';
-    
-    final projectScript = path.join(Directory.current.path, 'python_backend', scriptName);
+    const scriptName = 'llm_server.py';
+
+    final projectScript =
+        path.join(Directory.current.path, 'python_backend', scriptName);
     if (await File(projectScript).exists()) {
       return projectScript;
     }
-    
+
     final appDir = await getApplicationDocumentsDirectory();
-    final appScript = path.join(appDir.path, '11translator', 'python_backend', scriptName);
+    final appScript =
+        path.join(appDir.path, '11translator', 'python_backend', scriptName);
     if (await File(appScript).exists()) {
       return appScript;
     }
-    
+
     return null;
   }
 
   void _processStdout(String data) {
     if (_isDisposed) return;
-    
+
     final lines = LineSplitter.split(data);
     for (final line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-      
+
       try {
-        final json = jsonDecode(trimmed);
-        
-        // 检查是否是 READY 信号
+        final json = jsonDecode(trimmed) as Map<String, dynamic>;
+
         if (!_readyCompleter.isCompleted && json['type'] == 'ready') {
           _readyCompleter.complete();
         }
-        
+
         _messageController.add(json);
       } catch (e) {
-        // 忽略非 JSON 行
+        // ignore non-JSON lines
       }
     }
   }
 
   void _processStderr(String data) {
     if (_isDisposed) return;
-    
-    // 检查 READY 信号
+
     if (!_readyCompleter.isCompleted && data.contains('[READY]')) {
       _readyCompleter.complete();
     }
+  }
+
+  void _handleStreamMessage(
+    _PendingStreamRequest req,
+    String? type,
+    Map<String, dynamic> message,
+  ) {
+    if (type == 'token') {
+      final token = message['data'] as String?;
+      if (token != null) {
+        req.accumulatedText.write(token);
+        final currentText = req.accumulatedText.toString();
+
+        bool shouldStop = false;
+        for (final stopToken in req.stopTokens) {
+          if (currentText.contains(stopToken)) {
+            shouldStop = true;
+            break;
+          }
+        }
+
+        if (!shouldStop && req.hasStartedOutput && currentText.contains('###')) {
+          shouldStop = true;
+        }
+
+        if (!shouldStop) {
+          req.hasStartedOutput = true;
+          if (!req.responseController.isClosed) {
+            req.responseController.add(token);
+          }
+        } else {
+          _completeStreamRequest(req.requestId);
+        }
+      }
+    } else if (type == 'done') {
+      _completeStreamRequest(req.requestId);
+    } else if (type == 'error') {
+      final error = message['data'] as String?;
+      if (!req.responseController.isClosed) {
+        req.responseController.addError(StateError(error ?? 'Unknown error'));
+      }
+      _completeStreamRequest(req.requestId);
+    }
+  }
+
+  void _handlePendingMessage(
+    _PendingRequest req,
+    String? type,
+    Map<String, dynamic> message,
+  ) {
+    if (type == req.responseType) {
+      req.timeoutTimer?.cancel();
+      req.completer.complete(message);
+      req.subscription.cancel();
+      _pendingRequests.remove(req.requestId);
+    } else if (type == 'error') {
+      req.timeoutTimer?.cancel();
+      req.completer.completeError(
+        StateError(message['data']?.toString() ?? 'Unknown error'),
+      );
+      req.subscription.cancel();
+      _pendingRequests.remove(req.requestId);
+    }
+  }
+
+  void _completeStreamRequest(String requestId) {
+    final req = _pendingStreamRequests.remove(requestId);
+    if (req != null) {
+      req.timeoutTimer?.cancel();
+      req.subscription.cancel();
+      if (!req.responseController.isClosed) {
+        req.responseController.close();
+      }
+    }
+  }
+
+  void _sendRequest(Map<String, dynamic> request) {
+    if (_process == null || !_isReady || _isDisposed) {
+      throw StateError('Model not loaded');
+    }
+    final requestJson = jsonEncode(request);
+    _process!.stdin.writeln(requestJson);
+    _process!.stdin.flush();
   }
 
   @override
@@ -154,8 +258,10 @@ class PythonLlmDataSource implements LlmDataSource {
 
     final effectiveParams = params ?? InferenceParams.defaults;
     final stopTokens = effectiveParams.stop ?? [];
-    
-    final requestJson = <String, dynamic>{
+    final requestId = _nextRequestId();
+
+    final request = <String, dynamic>{
+      'requestId': requestId,
       'action': 'generate',
       'prompt': prompt,
       'params': {
@@ -166,76 +272,51 @@ class PythonLlmDataSource implements LlmDataSource {
         'repeatPenalty': effectiveParams.repeatPenalty,
       },
     };
-    
-    final request = jsonEncode(requestJson);
 
-    // 发送请求
-    _process!.stdin.writeln(request);
-    _process!.stdin.flush();
+    final streamReq = _PendingStreamRequest(
+      requestId: requestId,
+      responseController: StreamController<String>(),
+      stopTokens: stopTokens,
+    );
 
-    // 创建一个新的流控制器来处理这次请求
-    final responseController = StreamController<String>();
-    final StringBuffer accumulatedText = StringBuffer();
-    bool hasStartedOutput = false;
-    
-    late StreamSubscription<Map<String, dynamic>> subscription;
-    
-    subscription = _messageController.stream.listen(
+    _pendingStreamRequests[requestId] = streamReq;
+
+    streamReq.subscription = _messageController.stream.listen(
       (message) {
-        final type = message['type'] as String?;
-        
-        if (type == 'token') {
-          final token = message['data'] as String?;
-          if (token != null) {
-            accumulatedText.write(token);
-            final currentText = accumulatedText.toString();
-            
-            // 一旦检测到任何停止符，立即停止
-            bool shouldStop = false;
-            for (final stopToken in stopTokens) {
-              if (currentText.contains(stopToken)) {
-                shouldStop = true;
-                break;
-              }
-            }
-            
-            // 额外的严格检测：只要有输出后，只要看到 ### 就立即停止
-            if (!shouldStop && hasStartedOutput && currentText.contains('###')) {
-              shouldStop = true;
-            }
-            
-            // 如果不停止才添加 token
-            if (!shouldStop) {
-              hasStartedOutput = true;
-              responseController.add(token);
-            } else {
-              responseController.close();
-              subscription.cancel();
-              return;
-            }
-          }
-        } else if (type == 'done') {
-          responseController.close();
-          subscription.cancel();
-        } else if (type == 'error') {
-          final error = message['data'] as String?;
-          responseController.addError(StateError(error ?? 'Unknown error'));
-          responseController.close();
-          subscription.cancel();
+        final msgRequestId = message['requestId'] as String?;
+        if (msgRequestId == requestId) {
+          _handleStreamMessage(streamReq, message['type'] as String?, message);
         }
       },
       onError: (error) {
-        responseController.addError(error);
-        responseController.close();
+        if (!streamReq.responseController.isClosed) {
+          streamReq.responseController.addError(error);
+        }
+        _completeStreamRequest(requestId);
       },
       onDone: () {
-        if (!responseController.isClosed) {
-          responseController.close();
-        }
+        _completeStreamRequest(requestId);
       },
     );
 
-    return responseController.stream;
+    streamReq.timeoutTimer = Timer(const Duration(minutes: 5), () {
+      if (_pendingStreamRequests.containsKey(requestId)) {
+        if (!streamReq.responseController.isClosed) {
+          streamReq.responseController
+              .addError(TimeoutException('Generate timeout'));
+        }
+        _completeStreamRequest(requestId);
+      }
+    });
+
+    try {
+      _sendRequest(request);
+    } catch (e) {
+      _completeStreamRequest(requestId);
+      return Stream.error(e);
+    }
+
+    return streamReq.responseController.stream;
   }
 
   @override
@@ -248,73 +329,104 @@ class PythonLlmDataSource implements LlmDataSource {
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
-    
+
     if (!_readyCompleter.isCompleted) {
       _readyCompleter.completeError(StateError('Disposed'));
     }
-    
+
+    for (final req in _pendingRequests.values.toList()) {
+      req.timeoutTimer?.cancel();
+      req.subscription.cancel();
+      if (!req.completer.isCompleted) {
+        req.completer.completeError(StateError('Disposed'));
+      }
+    }
+    _pendingRequests.clear();
+
+    for (final req in _pendingStreamRequests.values.toList()) {
+      req.timeoutTimer?.cancel();
+      req.subscription.cancel();
+      if (!req.responseController.isClosed) {
+        req.responseController.close();
+      }
+    }
+    _pendingStreamRequests.clear();
+
     if (_process != null) {
       try {
         _process!.stdin.writeln(jsonEncode({'action': 'exit'}));
         await _process!.stdin.flush();
       } catch (e) {
-        // 忽略
+        // ignore
       }
-      
+
       await Future.delayed(const Duration(milliseconds: 500));
       _process!.kill();
       _process = null;
     }
-    
+
     _isReady = false;
     await _messageController.close();
   }
 
-  // ========== 字典功能 ==========
-  
-  Future<Map<String, dynamic>?> _sendDictionaryRequest(Map<String, dynamic> request) async {
+  // ========== Dictionary ==========
+
+  Future<Map<String, dynamic>?> _sendRequestWithId(
+    Map<String, dynamic> request,
+    String responseType, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
     if (_isDisposed) return null;
     if (_process == null || !_isReady) {
       return null;
     }
 
-    final requestJson = jsonEncode(request);
-    _process!.stdin.writeln(requestJson);
-    _process!.stdin.flush();
+    final requestId = _nextRequestId();
+    request['requestId'] = requestId;
 
     final completer = Completer<Map<String, dynamic>?>();
-    late StreamSubscription<Map<String, dynamic>> subscription;
+    final pending = _PendingRequest(
+      requestId: requestId,
+      responseType: responseType,
+      completer: completer,
+    );
+    _pendingRequests[requestId] = pending;
 
-    subscription = _messageController.stream.listen(
+    pending.subscription = _messageController.stream.listen(
       (message) {
-        final type = message['type'] as String?;
-        if (type == 'extract_result' || 
-            type == 'load_result' || 
-            type == 'lookup_result' ||
-            type == 'error') {
-          completer.complete(message);
-          subscription.cancel();
+        final msgRequestId = message['requestId'] as String?;
+        if (msgRequestId == requestId) {
+          _handlePendingMessage(pending, message['type'] as String?, message);
         }
       },
       onError: (error) {
-        completer.completeError(error);
-        subscription.cancel();
+        pending.timeoutTimer?.cancel();
+        if (!completer.isCompleted) {
+          completer.completeError(error);
+        }
+        pending.subscription.cancel();
+        _pendingRequests.remove(requestId);
       },
       onDone: () {
+        pending.timeoutTimer?.cancel();
         if (!completer.isCompleted) {
           completer.complete(null);
         }
+        _pendingRequests.remove(requestId);
       },
     );
 
-    // 超时 30 秒
-    return completer.future.timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        subscription.cancel();
-        return null;
-      },
-    );
+    pending.timeoutTimer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        completer.complete(null);
+      }
+      pending.subscription.cancel();
+      _pendingRequests.remove(requestId);
+    });
+
+    _sendRequest(request);
+
+    return completer.future;
   }
 
   Future<String?> extractDictionary(String archivePath, String outputDir) async {
@@ -324,7 +436,7 @@ class PythonLlmDataSource implements LlmDataSource {
       'outputDir': outputDir,
     };
 
-    final result = await _sendDictionaryRequest(request);
+    final result = await _sendRequestWithId(request, 'extract_result');
     if (result != null && result['type'] == 'extract_result') {
       final data = result['data'] as Map<String, dynamic>;
       if (data['success'] == true) {
@@ -340,7 +452,7 @@ class PythonLlmDataSource implements LlmDataSource {
       'dictPath': dictPath,
     };
 
-    final result = await _sendDictionaryRequest(request);
+    final result = await _sendRequestWithId(request, 'load_result');
     if (result != null && result['type'] == 'load_result') {
       final data = result['data'] as Map<String, dynamic>;
       return data['success'] == true;
@@ -355,14 +467,14 @@ class PythonLlmDataSource implements LlmDataSource {
       'word': word,
     };
 
-    final result = await _sendDictionaryRequest(request);
+    final result = await _sendRequestWithId(request, 'lookup_result');
     if (result != null && result['type'] == 'lookup_result') {
       return result['data'] as Map<String, dynamic>;
     }
     return null;
   }
 
-  // ========== OPUS-MT 翻译功能 ==========
+  // ========== OPUS-MT ==========
 
   Future<String?> translateWithOpusMt(
     String text, {
@@ -381,51 +493,20 @@ class PythonLlmDataSource implements LlmDataSource {
       'targetLang': targetLang,
     };
 
-    final requestJson = jsonEncode(request);
-    _process!.stdin.writeln(requestJson);
-    _process!.stdin.flush();
-
-    final completer = Completer<String?>();
-    late StreamSubscription<Map<String, dynamic>> subscription;
-
-    subscription = _messageController.stream.listen(
-      (message) {
-        final type = message['type'] as String?;
-        if (type == 'translate_result') {
-          final data = message['data'] as Map<String, dynamic>;
-          if (data['success'] == true) {
-            completer.complete(data['text'] as String?);
-          } else {
-            completer.completeError(StateError(data['error'] ?? 'Translation failed'));
-          }
-          subscription.cancel();
-        } else if (type == 'error') {
-          final error = message['data'] as String?;
-          completer.completeError(StateError(error ?? 'Unknown error'));
-          subscription.cancel();
-        }
-      },
-      onError: (error) {
-        completer.completeError(error);
-        subscription.cancel();
-      },
-      onDone: () {
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      },
-    );
-
-    return completer.future.timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        subscription.cancel();
-        throw TimeoutException('OPUS-MT translation timeout');
-      },
-    );
+    final result =
+        await _sendRequestWithId(request, 'translate_result', timeout: const Duration(seconds: 60));
+    if (result != null && result['type'] == 'translate_result') {
+      final data = result['data'] as Map<String, dynamic>;
+      if (data['success'] == true) {
+        return data['text'] as String?;
+      } else {
+        throw StateError(data['error'] ?? 'Translation failed');
+      }
+    }
+    throw TimeoutException('OPUS-MT translation timeout');
   }
 
-  // ========== 模型下载功能 ==========
+  // ========== Model Download ==========
 
   Future<Map<String, bool>> checkDownloadSources() async {
     if (_isDisposed) return {};
@@ -437,43 +518,13 @@ class PythonLlmDataSource implements LlmDataSource {
       'action': 'check_sources',
     };
 
-    final requestJson = jsonEncode(request);
-    _process!.stdin.writeln(requestJson);
-    _process!.stdin.flush();
-
-    final completer = Completer<Map<String, bool>>();
-    late StreamSubscription<Map<String, dynamic>> subscription;
-
-    subscription = _messageController.stream.listen(
-      (message) {
-        final type = message['type'] as String?;
-        if (type == 'sources_result') {
-          final data = message['data'] as Map<String, dynamic>;
-          completer.complete(data.cast<String, bool>());
-          subscription.cancel();
-        } else if (type == 'error') {
-          completer.completeError(StateError(message['data'] ?? 'Unknown error'));
-          subscription.cancel();
-        }
-      },
-      onError: (error) {
-        completer.completeError(error);
-        subscription.cancel();
-      },
-      onDone: () {
-        if (!completer.isCompleted) {
-          completer.complete({});
-        }
-      },
-    );
-
-    return completer.future.timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        subscription.cancel();
-        return {};
-      },
-    );
+    final result =
+        await _sendRequestWithId(request, 'sources_result', timeout: const Duration(seconds: 15));
+    if (result != null && result['type'] == 'sources_result') {
+      final data = result['data'] as Map<String, dynamic>;
+      return data.cast<String, bool>();
+    }
+    return {};
   }
 
   Future<Map<String, dynamic>> downloadModel({
@@ -495,42 +546,14 @@ class PythonLlmDataSource implements LlmDataSource {
       'autoDetect': autoDetect,
     };
 
-    final requestJson = jsonEncode(request);
-    _process!.stdin.writeln(requestJson);
-    _process!.stdin.flush();
-
-    final completer = Completer<Map<String, dynamic>>();
-    late StreamSubscription<Map<String, dynamic>> subscription;
-
-    subscription = _messageController.stream.listen(
-      (message) {
-        final type = message['type'] as String?;
-        if (type == 'download_result') {
-          final data = message['data'] as Map<String, dynamic>;
-          completer.complete(data);
-          subscription.cancel();
-        } else if (type == 'error') {
-          completer.complete({'success': false, 'error': message['data']});
-          subscription.cancel();
-        }
-      },
-      onError: (error) {
-        completer.complete({'success': false, 'error': error.toString()});
-        subscription.cancel();
-      },
-      onDone: () {
-        if (!completer.isCompleted) {
-          completer.complete({'success': false, 'error': 'Timeout'});
-        }
-      },
+    final result = await _sendRequestWithId(
+      request,
+      'download_result',
+      timeout: const Duration(minutes: 10),
     );
-
-    return completer.future.timeout(
-      const Duration(minutes: 10),
-      onTimeout: () {
-        subscription.cancel();
-        return {'success': false, 'error': 'Download timeout'};
-      },
-    );
+    if (result != null && result['type'] == 'download_result') {
+      return result['data'] as Map<String, dynamic>;
+    }
+    return {'success': false, 'error': 'Download timeout'};
   }
 }

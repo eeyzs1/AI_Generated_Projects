@@ -38,13 +38,29 @@ class AppDatabase extends _$AppDatabase {
         await migrator.createAll();
       },
       onUpgrade: (migrator, from, to) async {
-        // 对于新版本，重新创建所有表
-        await migrator.deleteTable(playHistoryTable.actualTableName);
-        await migrator.deleteTable(bookmarksTable.actualTableName);
-        await migrator.deleteTable(playQueueTable.actualTableName);
-        await migrator.deleteTable(videoBookmarks.actualTableName);
-        await migrator.deleteTable(imageBookmarks.actualTableName);
-        await migrator.createAll();
+        if (from < 2) {
+          await migrator.createTable(playHistoryTable);
+          await migrator.createTable(bookmarksTable);
+          await migrator.createTable(playQueueTable);
+        }
+        if (from < 3) {
+          await migrator.createTable(playHistoryTable);
+          await migrator.createTable(bookmarksTable);
+          await migrator.createTable(playQueueTable);
+        }
+        if (from < 4) {
+          await migrator.createTable(videoBookmarks);
+        }
+        if (from < 5) {
+          await migrator.createTable(imageBookmarks);
+        }
+        if (from < 6) {
+          await migrator.createTable(playHistoryTable);
+          await migrator.createTable(bookmarksTable);
+          await migrator.createTable(playQueueTable);
+          await migrator.createTable(videoBookmarks);
+          await migrator.createTable(imageBookmarks);
+        }
       },
       beforeOpen: (details) async {
         await customStatement('PRAGMA foreign_keys = ON');

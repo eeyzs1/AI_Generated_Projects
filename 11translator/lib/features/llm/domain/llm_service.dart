@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:rfdictionary/features/llm/data/datasources/python_llm_datasource.dart';
 
@@ -33,6 +34,10 @@ abstract class LlmDataSource {
   Future<void> dispose();
 }
 
+final llmDataSourceProvider = Provider<LlmDataSource>((ref) {
+  return PythonLlmDataSource();
+});
+
 @riverpod
 class LlmService extends _$LlmService {
   LlmDataSource? _datasource;
@@ -42,12 +47,12 @@ class LlmService extends _$LlmService {
   @override
   LlmStatus build() => LlmStatus.notLoaded;
 
-  Future<void> initialize(String modelPath) async {
+  Future<void> initialize(String modelPath, {LlmDataSource? dataSource}) async {
     state = LlmStatus.loading;
     _isReady = false;
     _modelPath = modelPath;
     try {
-      _datasource = _createLlmDataSource();
+      _datasource = dataSource ?? PythonLlmDataSource();
       await _datasource!.loadModel(modelPath);
       _isReady = true;
       state = LlmStatus.ready;
@@ -56,10 +61,6 @@ class LlmService extends _$LlmService {
       state = LlmStatus.error;
       rethrow;
     }
-  }
-
-  LlmDataSource _createLlmDataSource() {
-    return PythonLlmDataSource();
   }
 
   Future<void> retry() async {
@@ -84,30 +85,30 @@ class LlmService extends _$LlmService {
     if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
-    
+
     final isWordOrPhrase = _isWordOrPhrase(text);
-        
+
     String prompt;
     int maxTokens;
 
     if (isWordOrPhrase) {
       if (targetLang == 'zh') {
-        prompt = '翻译为中文：$text';
+        prompt = '\u7FFB\u8BD1\u4E3A\u4E2D\u6587\uFF1A$text';
       } else {
-        prompt = '翻译为英文：$text';
+        prompt = '\u7FFB\u8BD1\u4E3A\u82F1\u6587\uFF1A$text';
       }
       maxTokens = 100;
     } else {
       if (targetLang == 'zh') {
-        prompt = '请将以下内容翻译成中文，只输出翻译结果：$text';
+        prompt = '\u8BF7\u5C06\u4EE5\u4E0B\u5185\u5BB9\u7FFB\u8BD1\u6210\u4E2D\u6587\uFF0C\u53EA\u8F93\u51FA\u7FFB\u8BD1\u7ED3\u679C\uFF1A$text';
       } else {
-        prompt = '请将以下内容翻译成英文，只输出翻译结果：$text';
+        prompt = '\u8BF7\u5C06\u4EE5\u4E0B\u5185\u5BB9\u7FFB\u8BD1\u6210\u82F1\u6587\uFF0C\u53EA\u8F93\u51FA\u7FFB\u8BD1\u7ED3\u679C\uFF1A$text';
       }
       maxTokens = 256;
     }
 
     return _datasource!.generate(
-      prompt, 
+      prompt,
       params: InferenceParams(
         maxTokens: maxTokens,
         temperature: 0.3,
@@ -116,11 +117,11 @@ class LlmService extends _$LlmService {
         repeatPenalty: 1.05,
         stop: [
           '<|im_end|>',
-        ], 
+        ],
       ),
     );
   }
-  
+
   bool isWordOrPhrase(String text) {
     return _isWordOrPhrase(text);
   }
@@ -129,8 +130,8 @@ class LlmService extends _$LlmService {
     if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
-    final wordList = words.join('、');
-    final prompt = '简要辨析以下词语的区别（100字以内）：$wordList';
+    final wordList = words.join('\u3001');
+    final prompt = '\u7B80\u8981\u8FA8\u6790\u4EE5\u4E0B\u8BCD\u8BED\u7684\u533A\u522B\uFF08200\u5B57\u4EE5\u5185\uFF09\uFF1A$wordList';
     return _datasource!.generate(prompt, params: const InferenceParams(maxTokens: 200));
   }
 
@@ -138,7 +139,7 @@ class LlmService extends _$LlmService {
     if (!_isReady || _datasource == null) {
       return Stream.error(StateError('LLM not ready'));
     }
-    final prompt = '用英文单词"$word"造一个自然的例句，并给出中文翻译。格式：\n英文：...\n中文：...';
+    final prompt = '\u7528\u82F1\u6587\u5355\u8BCD"$word"\u9020\u4E00\u4E2A\u81EA\u7136\u7684\u4F8B\u53E5\uFF0C\u5E76\u7ED9\u51FA\u4E2D\u6587\u7FFB\u8BD1\u3002\u683C\u5F0F\uFF1A\n\u82F1\u6587\uFF1A...\n\u4E2D\u6587\uFF1A...';
     return _datasource!.generate(prompt, params: const InferenceParams(maxTokens: 128));
   }
 

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/core/utils/platform_utils.dart';
-import 'package:rfdictionary/features/llm/presentation/screens/model_download_screen.dart';
 import 'package:rfdictionary/features/llm/domain/model_manager.dart';
-import 'package:rfdictionary/features/dictionary/presentation/screens/dictionary_manager_screen.dart';
 import 'package:rfdictionary/features/dictionary/domain/dictionary_manager.dart';
 
 const List<Color> _presetColors = [
@@ -128,12 +127,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     subtitle: Text(isAvailable ? l10n.dictionaryReady : l10n.pleaseSelectDictionary),
                     trailing: FilledButton(
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const DictionaryManagerScreen(),
-                          ),
-                        );
+                        context.push('/settings/dictionary-manager');
                       },
                       child: Text(l10n.manage),
                     ),
@@ -153,15 +147,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   final isAvailable = snapshot.data ?? false;
                   return ListTile(
                     title: Text(l10n.aiModel),
-                    subtitle: Text(isAvailable ? 'Please select model' : l10n.notInstalled),
+                    subtitle: Text(isAvailable ? l10n.pleaseSelectModel : l10n.notInstalled),
                     trailing: FilledButton(
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ModelDownloadScreen(),
-                          ),
-                        );
+                        context.push('/settings/model-download');
                       },
                       child: Text(l10n.manage),
                     ),
@@ -285,7 +274,7 @@ class _OptionGroup<T extends Enum> extends ConsumerWidget {
                       style: FilledButton.styleFrom(
                         backgroundColor: isSelected
                             ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.surfaceVariant,
+                            : Theme.of(context).colorScheme.surfaceContainerHighest,
                         foregroundColor: isSelected
                             ? Theme.of(context).colorScheme.onPrimary
                             : Theme.of(context).colorScheme.onSurfaceVariant,
@@ -448,7 +437,7 @@ class _ColorPickerGroup extends ConsumerWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withValues(alpha: 0.2),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),

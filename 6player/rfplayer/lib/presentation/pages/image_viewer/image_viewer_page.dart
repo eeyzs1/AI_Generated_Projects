@@ -360,84 +360,19 @@ class _ImageViewerPageState extends ConsumerState<ImageViewerPage> {
         '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
-  String? _tryExtractRealPathFromContentUri(String contentUri) {
-    debugPrint('[ImageViewerPage] 尝试从 content URI 提取真实路径: $contentUri');
-    
-    // 处理格式: content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fimage_test.png
-    // 或者格式: content://com.android.providers.downloads.documents/document/msf%3A1000000051
-    if (contentUri.contains('/document/')) {
-      final parts = contentUri.split('/document/');
-      if (parts.length == 2) {
-        final encodedPath = parts[1];
-        debugPrint('[ImageViewerPage] 找到编码部分: $encodedPath');
-        
-        // 检查常见的前缀并移除
-        String pathToDecode = encodedPath;
-        if (pathToDecode.startsWith('raw%3A')) {
-          pathToDecode = pathToDecode.substring(6);
-          debugPrint('[ImageViewerPage] 移除 raw: 前缀');
-        } else if (pathToDecode.startsWith('msf%3A')) {
-          debugPrint('[ImageViewerPage] 检测到 msf: 前缀（MediaStore ID），无法直接提取真实路径');
-          // msf: 后面是 MediaStore ID，不是文件路径，返回 null
-          return null;
-        }
-        
-        // URL 解码
-        try {
-          final decodedPath = Uri.decodeComponent(pathToDecode);
-          debugPrint('[ImageViewerPage] URL 解码后: $decodedPath');
-          
-          // 检查是否是一个绝对路径
-          if (decodedPath.startsWith('/')) {
-            debugPrint('[ImageViewerPage] 提取到真实路径: $decodedPath');
-            return decodedPath;
-          }
-        } catch (e) {
-          debugPrint('[ImageViewerPage] URL 解码失败: $e');
-        }
-      }
-    }
-    
-    debugPrint('[ImageViewerPage] 无法从 content URI 提取真实路径');
-    return null;
-  }
-
   Widget _buildImageWidget(ImageViewerState state) {
-    debugPrint('[ImageViewerPage] ======== 构建图片组件 ========');
-    debugPrint('[ImageViewerPage] state.currentPath: ${state.currentPath}');
-    debugPrint('[ImageViewerPage] widget.bytes: ${widget.bytes != null ? '有数据' : '无数据'}');
-    debugPrint('[ImageViewerPage] state.imageInfo: ${state.imageInfo != null ? '存在' : '不存在'}');
-    debugPrint('[ImageViewerPage] state.imageInfo.bytes: ${state.imageInfo?.bytes != null ? '有数据' : '无数据'}');
-    debugPrint('[ImageViewerPage] state.isLoading: ${state.isLoading}');
-    
-    // 优先使用通过 widget 传递过来的字节数据
     if (widget.bytes != null) {
-      debugPrint('[ImageViewerPage] 使用 widget.bytes 显示图片，字节长度: ${widget.bytes!.length}');
       return Image.memory(
         widget.bytes!,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       );
     }
-    
-    // 然后尝试使用 state.imageInfo.bytes
-    if (state.imageInfo != null && state.imageInfo!.bytes != null) {
-      debugPrint('[ImageViewerPage] 使用 state.imageInfo.bytes 显示图片，字节长度: ${state.imageInfo!.bytes!.length}');
-      return Image.memory(
-        state.imageInfo!.bytes!,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-      );
-    }
-    
-    // 如果是加载中状态，显示加载指示器
+
     if (state.isLoading) {
-      debugPrint('[ImageViewerPage] 正在加载，显示加载指示器');
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
-    
-    // 最后使用 Image.file 显示普通文件
-    debugPrint('[ImageViewerPage] 使用 Image.file 显示普通文件，路径: ${state.currentPath}');
+
     return Image.file(
       File(state.currentPath),
       fit: BoxFit.contain,

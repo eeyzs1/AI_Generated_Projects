@@ -11,13 +11,35 @@ class SettingsRepository {
   static const String _showHiddenFilesKey = 'show_hidden_files';
   static const String _defaultPlaybackSpeedKey = 'default_playback_speed';
 
+  T _parseEnum<T>(List<T> values, String? name, T defaultValue) {
+    if (name == null) return defaultValue;
+    for (final value in values) {
+      if ((value as dynamic).name == name) {
+        return value;
+      }
+    }
+    return defaultValue;
+  }
+
   Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
     
     return AppSettings(
-      themeMode: ThemeMode.values[prefs.getInt(_themeModeKey) ?? 0],
-      uiStyle: UIStyle.values[prefs.getInt(_uiStyleKey) ?? 2],
-      language: AppLanguage.values[prefs.getInt(_languageKey) ?? 0],
+      themeMode: _parseEnum(
+        AppThemeMode.values,
+        prefs.getString(_themeModeKey),
+        AppThemeMode.system,
+      ),
+      uiStyle: _parseEnum(
+        UIStyle.values,
+        prefs.getString(_uiStyleKey),
+        UIStyle.adaptive,
+      ),
+      language: _parseEnum(
+        AppLanguage.values,
+        prefs.getString(_languageKey),
+        AppLanguage.system,
+      ),
       rememberPlaybackPosition: prefs.getBool(_rememberPositionKey) ?? true,
       historyMaxItems: prefs.getInt(_historyMaxItemsKey) ?? 100,
       defaultOpenPath: prefs.getString(_defaultOpenPathKey),
@@ -29,9 +51,9 @@ class SettingsRepository {
   Future<void> save(AppSettings settings) async {
     final prefs = await SharedPreferences.getInstance();
     
-    await prefs.setInt(_themeModeKey, settings.themeMode.index);
-    await prefs.setInt(_uiStyleKey, settings.uiStyle.index);
-    await prefs.setInt(_languageKey, settings.language.index);
+    await prefs.setString(_themeModeKey, settings.themeMode.name);
+    await prefs.setString(_uiStyleKey, settings.uiStyle.name);
+    await prefs.setString(_languageKey, settings.language.name);
     await prefs.setBool(_rememberPositionKey, settings.rememberPlaybackPosition);
     await prefs.setInt(_historyMaxItemsKey, settings.historyMaxItems);
     if (settings.defaultOpenPath != null) {

@@ -1,5 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/constants/app_routes.dart';
 import '../../core/localization/app_localizations.dart';
 
 class FluentShell extends StatelessWidget {
@@ -32,7 +33,7 @@ class FluentShell extends StatelessWidget {
           ),
           PaneItem(
             icon: const Icon(FluentIcons.bookmarks),
-            title: Text('书签'),
+            title: Text(localizations.bookmarks),
             body: child,
           ),
           PaneItem(
@@ -49,31 +50,22 @@ class FluentShell extends StatelessWidget {
   int _getCurrentIndex(BuildContext context) {
     final state = GoRouterState.of(context);
     final location = state.uri.path;
-    if (location.startsWith('/home')) return 0;
-    if (location.startsWith('/history')) return 1;
-    if (location.startsWith('/files')) return 2;
-    if (location.startsWith('/bookmark')) return 3;
-    if (location.startsWith('/settings')) return 4;
+    if (location.startsWith(AppRoutes.home)) return 0;
+    if (location.startsWith(AppRoutes.history)) return 1;
+    if (location.startsWith(AppRoutes.files)) return 2;
+    if (location.startsWith(AppRoutes.bookmark)) return 3;
+    if (location.startsWith(AppRoutes.settings)) return 4;
     return 0;
   }
 
   void _navigateTo(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        GoRouter.of(context).go('/home');
-        break;
-      case 1:
-        GoRouter.of(context).go('/history');
-        break;
-      case 2:
-        GoRouter.of(context).go('/files');
-        break;
-      case 3:
-        GoRouter.of(context).go('/bookmark');
-        break;
-      case 4:
-        GoRouter.of(context).go('/settings');
-        break;
-    }
+    final routes = [
+      AppRoutes.home,
+      AppRoutes.history,
+      AppRoutes.files,
+      AppRoutes.bookmark,
+      AppRoutes.settings,
+    ];
+    GoRouter.of(context).go(routes[index]);
   }
 }

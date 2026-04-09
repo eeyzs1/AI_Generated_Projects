@@ -8,12 +8,10 @@ final bookmarkProvider = StateNotifierProvider<BookmarkNotifier, List<Bookmark>>
 });
 
 class BookmarkNotifier extends StateNotifier<List<Bookmark>> {
-  final Ref ref;
-  final BookmarkRepository _repository;
+  final Ref _ref;
+  BookmarkRepository get _repository => _ref.read(bookmarkRepositoryProvider);
 
-  BookmarkNotifier(this.ref) 
-    : _repository = ref.watch(bookmarkRepositoryProvider),
-      super([]) {
+  BookmarkNotifier(this._ref) : super([]) {
     _loadBookmarks();
   }
 

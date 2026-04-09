@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fast_file_picker/fast_file_picker.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:saf_stream/saf_stream.dart';
 import '../../router/app_router.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/thumbnail_provider.dart';
@@ -23,7 +22,6 @@ class FileBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
-  final SafStream _safStream = SafStream();
 
   @override
   Widget build(BuildContext context) {
@@ -108,11 +106,11 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     
     final videoTypeGroup = XTypeGroup(
       label: 'Video Files',
-      extensions: videoFormats,
+      extensions: videoFormats.toList(),
     );
     final imageTypeGroup = XTypeGroup(
       label: 'Image Files',
-      extensions: imageFormats,
+      extensions: imageFormats.toList(),
     );
     debugPrint('[FileBrowser] 等待用户选择文件...');
     final result = await FastFilePicker.pickFile(

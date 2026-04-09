@@ -20,10 +20,12 @@ import '../../../presentation/providers/settings_provider.dart';
 import '../../../presentation/providers/play_queue_provider.dart';
 import '../../../presentation/providers/video_bookmark_provider.dart';
 import '../../../presentation/providers/volume_provider.dart';
+import '../../../presentation/providers/thumbnail_provider.dart';
 import 'widgets/windows_play_list_panel.dart';
 import 'widgets/android_play_list_drawer.dart';
 import 'package:path/path.dart' as p;
 import '../../../data/services/player_service.dart';
+import 'video_player_controller.dart';
 
 // 字幕菜单组件，独立 StatefulWidget
 class SubtitleMenu extends ConsumerStatefulWidget {
@@ -278,7 +280,7 @@ class _VolumeControlState extends ConsumerState<VolumeControl> {
             max: 1.0,
             divisions: 100,
             onChanged: (newVolume) {
-              ref.read(volumeProvider.notifier).state = newVolume;
+              ref.read(volumeProvider.notifier).setVolume(newVolume);
               final clampedVolume = newVolume.clamp(0.0, 1.0);
               final playerService = ref.read(playerServiceProvider);
               if (playerService.isInitialized && playerService.controller != null) {
@@ -309,7 +311,6 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isPlaying = false;
-  final double _volume = 1.0;
   double _playbackSpeed = 1.0;
   bool _showSpeedControl = false;
   bool _showVolumeControl = false;
@@ -338,7 +339,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   late FocusAttachment _focusAttachment;
   bool _isUpdateLoopRunning = false;
   bool _isDisposing = false;
-  bool _isInitializing = false; // 防止在初始化过程中 _handlePlayQueueChange 被触发
+  bool _isInitializing = false;
+
+  VoidCallback? _playerServiceListener;
+  ProviderSubscription? _playQueueSubscription;
+  PlayerService? _cachedPlayerService;
   
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
@@ -363,7 +368,6 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   static const Duration _throttleDuration = Duration(milliseconds: 300);
   static const Duration _subtitleDebounceDuration = Duration(milliseconds: 200);
   static const Duration _subtitleDebounceReduction = Duration(milliseconds: 100);
-  static const Duration _subtitleWaitDuration = Duration(milliseconds: 100);
 
   @override
   void initState() {
@@ -384,6 +388,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         _focusNode.requestFocus();
         _focusAttachment.reparent();
         _initializePlayer();
+        _playQueueSubscription = ref.listenManual(playQueueProvider, (previous, next) {
+          if (mounted && !_isDisposing) {
+            _handlePlayQueueChange();
+          }
+        });
       }
     });
   }
@@ -461,44 +470,66 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   }
 
   @override
+  void deactivate() {
+    _isDisposing = true;
+    _cachedPlayerService = ref.read(playerServiceProvider);
+    _playQueueSubscription?.close();
+    _playQueueSubscription = null;
+    _stopListeningToPlayer();
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     debugPrint('[VideoPlayerPage] dispose called');
+    _isDisposing = true;
+    _playQueueSubscription?.close();
+    _playQueueSubscription = null;
+    _stopListeningToPlayer();
     _focusAttachment.detach();
     _focusNode.dispose();
     _debounceTimer?.cancel();
     _subtitleDebounceTimer?.cancel();
-    
-    // 统一由 dispose() 负责释放播放器
-    // 无论是自定义返回按钮还是系统返回，最终都会走到这里
-    final playerService = PlayerService.instance;
-    if (playerService.isInitialized || playerService.controller != null) {
-      debugPrint('[VideoPlayerPage] dispose: calling stopAsyncOperations()');
-      playerService.stopAsyncOperations();
+
+    final playerService = _cachedPlayerService;
+    if (playerService != null) {
+      final controller = playerService.controller;
+      if (controller != null && controller is MyVideoPlayerController) {
+        try {
+          controller.dispose();
+        } catch (e) {
+          debugPrint('[VideoPlayerPage] Error disposing MyVideoPlayerController: $e');
+        }
+      }
+      playerService.stopAndRelease();
+      _cachedPlayerService = null;
     }
-    
+
     super.dispose();
   }
   
   // 处理返回按钮点击
   Future<void> _handleBackPress() async {
-    // 设置正在销毁标志，防止继续访问播放器
-    setState(() {
-      _isDisposing = true;
-    });
-    
+    if (_isDisposing) return;
+    _isDisposing = true;
+
     final playerService = ref.read(playerServiceProvider);
-    
-    // 先更新 history 和 play queue（在播放器还没释放前）
+
+    if (playerService.isInitialized && playerService.controller != null) {
+      try {
+        playerService.controller!.setVolume(0);
+        playerService.pause();
+      } catch (_) {}
+    }
+
     if (playerService.isInitialized && playerService.controller != null) {
       try {
         final position = playerService.controller!.position;
         final duration = playerService.controller!.duration;
-        
-        // 更新历史记录
+
         final historyRepo = ref.read(historyRepositoryProvider);
         await historyRepo.updatePosition(widget.path, position);
-        
-        // 更新播放队列中的播放进度
+
         if (duration != Duration.zero) {
           final progress = position.inMilliseconds / duration.inMilliseconds;
           final playQueueService = ref.read(playQueueServiceProvider);
@@ -511,8 +542,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         debugPrint('Error updating data on back press: $e');
       }
     }
-    
-    // 和系统手势返回一样，直接返回，由 dispose() 处理播放器释放
+
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -545,14 +575,37 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         if (playerService.isInitialized) {
           playerService.play();
           if (mounted) {
-            _updatePlayerState();
+            _startListeningToPlayer();
           }
         }
       } else {
         // 3. 如果不同，加入列表 + 播放
         debugPrint('[VideoPlayerPage] _handlePlayQueueChange: Different path, adding to queue and playing');
         final newFileName = currentPlaying.displayName;
-        await playerService.initialize(currentPlaying.path, ref, fileName: newFileName);
+        await playerService.initialize(
+          currentPlaying.path,
+          fileName: newFileName,
+          onCreateController: (safePath, fName) async {
+            final controller = MyVideoPlayerController(
+              safePath,
+              fileName: fName,
+              historyRepo: ref.read(historyRepositoryProvider),
+              playQueueService: ref.read(playQueueServiceProvider),
+              playQueueNotifier: ref.read(playQueueProvider.notifier),
+              thumbnailService: ref.read(thumbnailServiceProvider),
+              onStateChanged: () => playerService.notifyStateChanged(),
+            );
+            await controller.initialize();
+            playerService.setController(controller);
+          },
+          onDisposeController: () {
+            final oldController = playerService.controller;
+            if (oldController != null) {
+              try { oldController.pause(); } catch (_) {}
+              oldController.dispose();
+            }
+          },
+        );
         playerService.setPlaybackSpeed(_playbackSpeed);
         
         // 更新当前文件名
@@ -567,7 +620,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         
         // 更新 UI
         if (mounted) {
-          _updatePlayerState();
+          _startListeningToPlayer();
         }
       }
     } catch (e, stackTrace) {
@@ -619,7 +672,30 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       // 3. 初始化播放器，但不播放
       final playerService = ref.read(playerServiceProvider);
       debugPrint('[VideoPlayerPage] _initializePlayer: initializing with fileName: $fileName (but NOT playing yet)');
-      await playerService.initialize(widget.path, ref, fileName: fileName);
+      await playerService.initialize(
+        widget.path,
+        fileName: fileName,
+        onCreateController: (safePath, fName) async {
+          final controller = MyVideoPlayerController(
+            safePath,
+            fileName: fName,
+            historyRepo: ref.read(historyRepositoryProvider),
+            playQueueService: ref.read(playQueueServiceProvider),
+            playQueueNotifier: ref.read(playQueueProvider.notifier),
+            thumbnailService: ref.read(thumbnailServiceProvider),
+            onStateChanged: () => playerService.notifyStateChanged(),
+          );
+          await controller.initialize();
+          playerService.setController(controller);
+        },
+        onDisposeController: () {
+          final oldController = playerService.controller;
+          if (oldController != null) {
+            try { oldController.pause(); } catch (_) {}
+            oldController.dispose();
+          }
+        },
+      );
       
       // 设置播放速度和初始位置
       playerService.setPlaybackSpeed(_playbackSpeed);
@@ -640,7 +716,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       
       // 更新 UI
       if (mounted) {
-        _updatePlayerState();
+        _startListeningToPlayer();
       }
     } catch (e, stackTrace) {
       debugPrint('Error initializing player: $e');
@@ -655,44 +731,50 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     }
   }
 
-  Future<void> _updatePlayerState() async {
+  void _startListeningToPlayer() {
     if (_isUpdateLoopRunning) return;
     _isUpdateLoopRunning = true;
-    
-    while (mounted && !_isDisposing) {
-      try {
-        if (!_isSliderDragging && mounted && !_isDisposing) {
-          final playerService = ref.read(playerServiceProvider);
-          if (playerService.isInitialized && playerService.controller != null && !_isDisposing) {
-            try {
-              final position = playerService.controller!.position;
-              final duration = playerService.controller!.duration;
-              final isPlaying = playerService.controller!.isPlaying;
-              final completed = duration.inMilliseconds > 0 &&
-                  position.inMilliseconds >= duration.inMilliseconds * 0.99 &&
-                  !isPlaying;
 
-              if (mounted && !_isDisposing) {
-                setState(() {
-                  _position = position;
-                  _duration = duration;
-                  _isPlaying = isPlaying;
-                  _isCompleted = completed;
-                });
-              }
-            } catch (e) {
-              debugPrint('Error getting player state: $e');
-            }
+    final playerService = ref.read(playerServiceProvider);
+    _cachedPlayerService = playerService;
+    _playerServiceListener = () {
+      if (!mounted || _isDisposing) return;
+      if (_isSliderDragging) return;
+
+      if (playerService.isInitialized && playerService.controller != null) {
+        try {
+          final controller = playerService.controller as MyVideoPlayerController;
+          final position = controller.position;
+          final duration = controller.duration;
+          final isPlaying = controller.isPlaying;
+          final completed = duration.inMilliseconds > 0 &&
+              position.inMilliseconds >= duration.inMilliseconds * 0.99 &&
+              !isPlaying;
+
+          if (mounted && !_isDisposing) {
+            setState(() {
+              _position = position;
+              _duration = duration;
+              _isPlaying = isPlaying;
+              _isCompleted = completed;
+            });
           }
+        } catch (e) {
+          debugPrint('Error getting player state: $e');
         }
-      } catch (e) {
-        debugPrint('Error updating player state: $e');
       }
+    };
+    playerService.addListener(_playerServiceListener!);
+  }
 
-      if (!mounted || _isDisposing) break;
-      await Future.delayed(const Duration(milliseconds: 300));
+  void _stopListeningToPlayer() {
+    if (_playerServiceListener != null) {
+      final playerService = _cachedPlayerService;
+      if (playerService != null) {
+        playerService.removeListener(_playerServiceListener!);
+      }
+      _playerServiceListener = null;
     }
-    
     _isUpdateLoopRunning = false;
   }
 
@@ -909,7 +991,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     final playerService = ref.read(playerServiceProvider);
     if (playerService.isInitialized && playerService.controller != null) {
       playerService.controller!.setVolume(clampedVolume);
-      ref.read(volumeProvider.notifier).state = clampedVolume;
+      ref.read(volumeProvider.notifier).setVolume(clampedVolume);
     }
   }
 
@@ -954,7 +1036,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       // 打开文件选择器
       final typeGroup = XTypeGroup(
         label: 'Subtitle Files',
-        extensions: subtitleFormats,
+        extensions: subtitleFormats.toList(),
       );
       final result = await FastFilePicker.pickFile(
         acceptedTypeGroups: [typeGroup],
@@ -1199,9 +1281,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         _keyboardSeek(newPosition);
       }
     } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      _handleVolumeChange(_volume + 0.1);
+      final currentVolume = ref.read(volumeProvider);
+      _handleVolumeChange(currentVolume + 0.1);
     } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      _handleVolumeChange(_volume - 0.1);
+      final currentVolume = ref.read(volumeProvider);
+      _handleVolumeChange(currentVolume - 0.1);
     } else if (event.logicalKey == LogicalKeyboardKey.equal) {
       _handleSpeedChangeFinal((_playbackSpeed + 0.1).clamp(0.25, 4.0));
     } else if (event.logicalKey == LogicalKeyboardKey.minus) {
@@ -1223,14 +1307,13 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 监听播放队列变化
-    ref.listen(playQueueProvider, (previous, next) {
-      if (mounted) {
-        _handlePlayQueueChange();
-      }
-    });
-
-    return ScaffoldMessenger(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBackPress();
+      },
+      child: ScaffoldMessenger(
       key: _scaffoldMessengerKey,
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -1887,6 +1970,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -1918,12 +2002,5 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         ),
       ),
     );
-  }
-
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }

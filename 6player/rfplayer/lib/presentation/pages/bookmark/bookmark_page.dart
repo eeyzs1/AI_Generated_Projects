@@ -277,7 +277,7 @@ class _BookmarkPageState extends ConsumerState<BookmarkPage> {
 
   Future<void> _openImage(String imagePath) async {
     if (mounted) {
-      context.push('/image-viewer', extra: imagePath);
+      context.push('/image-viewer', extra: {'path': imagePath});
     }
   }
 

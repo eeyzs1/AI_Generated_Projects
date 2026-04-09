@@ -1,64 +1,32 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
-
 part of 'translation_history_provider.dart';
 
-// **************************************************************************
-// RiverpodGenerator
-// **************************************************************************
+typedef TranslationHistoryRepositoryRef = Ref;
 
-String _$translationHistoryRepositoryHash() =>
-    r'71c9a3c1aa9e6dd26b7a874630c55b505354090c';
-
-/// See also [translationHistoryRepository].
-@ProviderFor(translationHistoryRepository)
 final translationHistoryRepositoryProvider =
-    AutoDisposeProvider<TranslationHistoryRepository>.internal(
+    AutoDisposeProvider<TranslationHistoryRepository>(
   translationHistoryRepository,
-  name: r'translationHistoryRepositoryProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$translationHistoryRepositoryHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
+  name: r'translationHistoryRepository',
+  dependencies: const <ProviderBase>[],
 );
 
-typedef TranslationHistoryRepositoryRef
-    = AutoDisposeProviderRef<TranslationHistoryRepository>;
-String _$translationHistoryListHash() =>
-    r'67e2791ba8e5491874f32287467623c5e3796dc5';
+typedef TranslationHistoryListRef = Ref;
 
-/// See also [TranslationHistoryList].
-@ProviderFor(TranslationHistoryList)
-final translationHistoryListProvider = AutoDisposeAsyncNotifierProvider<
-    TranslationHistoryList, List<TranslationHistory>>.internal(
+abstract class _$TranslationHistoryList extends AutoDisposeAsyncNotifier<List<TranslationHistory>> {
+}
+
+final translationHistoryListProvider = AutoDisposeAsyncNotifierProvider<TranslationHistoryList, List<TranslationHistory>>(
   TranslationHistoryList.new,
-  name: r'translationHistoryListProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$translationHistoryListHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
+  name: r'translationHistoryList',
+  dependencies: [translationHistoryRepositoryProvider],
 );
 
-typedef _$TranslationHistoryList
-    = AutoDisposeAsyncNotifier<List<TranslationHistory>>;
-String _$translationFavoriteListHash() =>
-    r'5a2ecc67d652610d898419272f24af1002ad0b14';
+typedef TranslationFavoriteListRef = Ref;
 
-/// See also [TranslationFavoriteList].
-@ProviderFor(TranslationFavoriteList)
-final translationFavoriteListProvider = AutoDisposeAsyncNotifierProvider<
-    TranslationFavoriteList, List<TranslationHistory>>.internal(
+abstract class _$TranslationFavoriteList extends AutoDisposeAsyncNotifier<List<TranslationHistory>> {
+}
+
+final translationFavoriteListProvider = AutoDisposeAsyncNotifierProvider<TranslationFavoriteList, List<TranslationHistory>>(
   TranslationFavoriteList.new,
-  name: r'translationFavoriteListProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$translationFavoriteListHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
+  name: r'translationFavoriteList',
+  dependencies: [translationHistoryRepositoryProvider],
 );
-
-typedef _$TranslationFavoriteList
-    = AutoDisposeAsyncNotifier<List<TranslationHistory>>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

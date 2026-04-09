@@ -1,18 +1,24 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:path/path.dart' as p;
 import '../constants/supported_formats.dart';
 import '../../data/models/subtitle.dart';
 
 class SubtitleParser {
   static Future<List<SubtitleItem>> parse(String filePath) async {
-    final extension = p.extension(filePath).toLowerCase().substring(1);
-    
+    final ext = p.extension(filePath).toLowerCase();
+    if (ext.isEmpty) {
+      throw UnsupportedError('File has no extension: $filePath');
+    }
+    final extension = ext.substring(1);
+
     if (!subtitleFormats.contains(extension)) {
       throw UnsupportedError('Unsupported subtitle format: $extension');
     }
 
     final file = File(filePath);
-    final content = await file.readAsString();
+    final bytes = await file.readAsBytes();
+    final content = _decodeBytes(bytes);
 
     switch (extension) {
       case 'srt':
@@ -27,19 +33,34 @@ class SubtitleParser {
     }
   }
 
+  static String _decodeBytes(List<int> bytes) {
+    if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+      return utf8.decode(bytes.sublist(3));
+    }
+    if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+      return utf8.decode(bytes.sublist(2), allowMalformed: true);
+    }
+    if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+      return utf8.decode(bytes.sublist(2), allowMalformed: true);
+    }
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+
   static List<SubtitleItem> _parseSrt(String content) {
     final items = <SubtitleItem>[];
     final lines = content.split(RegExp(r'\r?\n'));
     int i = 0;
 
     while (i < lines.length) {
-      // Skip empty lines
       while (i < lines.length && lines[i].trim().isEmpty) {
         i++;
       }
       if (i >= lines.length) break;
 
-      // Parse index
       final indexStr = lines[i].trim();
       final index = int.tryParse(indexStr);
       if (index == null) {
@@ -48,12 +69,11 @@ class SubtitleParser {
       }
       i++;
 
-      // Parse timecode
       if (i >= lines.length) break;
       final timeLine = lines[i].trim();
       i++;
 
-      final timeMatch = RegExp(r'(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})').firstMatch(timeLine);
+      final timeMatch = RegExp(r'(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})').firstMatch(timeLine);
       if (timeMatch == null) continue;
 
       final startTime = Duration(
@@ -70,7 +90,6 @@ class SubtitleParser {
         milliseconds: int.parse(timeMatch.group(8)!),
       );
 
-      // Parse content
       final contentBuffer = StringBuffer();
       while (i < lines.length && lines[i].trim().isNotEmpty) {
         if (contentBuffer.isNotEmpty) contentBuffer.write('\n');
@@ -130,11 +149,19 @@ class SubtitleParser {
   static Duration _parseAssTime(String timeStr) {
     final parts = timeStr.split(':');
     if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = int.parse(parts[1]);
+      final hours = int.tryParse(parts[0]) ?? 0;
+      final minutes = int.tryParse(parts[1]) ?? 0;
       final secondsParts = parts[2].split('.');
-      final seconds = int.parse(secondsParts[0]);
-      final milliseconds = secondsParts.length > 1 ? int.parse(secondsParts[1].padRight(2, '0')) * 10 : 0;
+      final seconds = int.tryParse(secondsParts[0]) ?? 0;
+      int milliseconds = 0;
+      if (secondsParts.length > 1) {
+        final msStr = secondsParts[1];
+        if (msStr.length == 2) {
+          milliseconds = (int.tryParse(msStr) ?? 0) * 10;
+        } else if (msStr.length >= 3) {
+          milliseconds = int.tryParse(msStr.substring(0, 3)) ?? 0;
+        }
+      }
       return Duration(
         hours: hours,
         minutes: minutes,
@@ -150,20 +177,17 @@ class SubtitleParser {
     final lines = content.split(RegExp(r'\r?\n'));
     int i = 0;
 
-    // Skip WEBVTT header
     while (i < lines.length && !lines[i].trim().startsWith('WEBVTT')) {
       i++;
     }
-    i++;
+    if (i < lines.length) i++;
 
     while (i < lines.length) {
-      // Skip empty lines and comments
       while (i < lines.length && (lines[i].trim().isEmpty || lines[i].trim().startsWith('NOTE'))) {
         i++;
       }
       if (i >= lines.length) break;
 
-      // Optional index
       int? index;
       final indexStr = lines[i].trim();
       if (RegExp(r'^\d+$').hasMatch(indexStr)) {
@@ -173,12 +197,11 @@ class SubtitleParser {
 
       if (i >= lines.length) break;
 
-      // Parse timecode
       final timeLine = lines[i].trim();
       i++;
 
-      final timeMatch = RegExp(r'(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})').firstMatch(timeLine);
-      final shortTimeMatch = RegExp(r'(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2})\.(\d{3})').firstMatch(timeLine);
+      final timeMatch = RegExp(r'(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})').firstMatch(timeLine);
+      final shortTimeMatch = RegExp(r'(\d{1,2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}):(\d{2})\.(\d{3})').firstMatch(timeLine);
 
       Duration startTime;
       Duration endTime;
@@ -211,7 +234,6 @@ class SubtitleParser {
         continue;
       }
 
-      // Parse content
       final contentBuffer = StringBuffer();
       while (i < lines.length && lines[i].trim().isNotEmpty && !lines[i].trim().startsWith('NOTE')) {
         if (contentBuffer.isNotEmpty) contentBuffer.write('\n');

@@ -29,7 +29,7 @@ class FileUtils {
     return p.dirname(path);
   }
 
-  static List<File> getFilesInDirectory(String directoryPath, {List<String>? extensions}) {
+  static List<File> getFilesInDirectory(String directoryPath, {Iterable<String>? extensions}) {
     final directory = Directory(directoryPath);
     if (!directory.existsSync()) return [];
 

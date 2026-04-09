@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 enum PermissionStatus {
   notDetermined,
@@ -32,37 +34,55 @@ class PermissionState {
 }
 
 class PermissionNotifier extends StateNotifier<PermissionState> {
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  bool? _isAndroid13Plus;
+
   PermissionNotifier() : super(PermissionState()) {
     _checkInitialPermissions();
   }
 
+  Future<bool> _isAndroid13OrHigher() async {
+    if (_isAndroid13Plus != null) return _isAndroid13Plus!;
+    if (!Platform.isAndroid) {
+      _isAndroid13Plus = false;
+      return false;
+    }
+    try {
+      final androidInfo = await _deviceInfo.androidInfo;
+      _isAndroid13Plus = androidInfo.version.sdkInt >= 33;
+      return _isAndroid13Plus!;
+    } catch (e) {
+      debugPrint('[PermissionProvider] Error checking Android version: $e');
+      _isAndroid13Plus = true;
+      return true;
+    }
+  }
+
   Future<void> _checkInitialPermissions() async {
-    debugPrint('[PermissionProvider] ======== 检查初始权限 ========');
-    
+    debugPrint('[PermissionProvider] ======== Checking initial permissions ========');
+
     PermissionStatus status;
-    
-    // 检查 Android 版本对应的权限
+
     if (defaultTargetPlatform == TargetPlatform.android) {
-      // Android 13+ (API 33+) 使用分区权限
       if (await _isAndroid13OrHigher()) {
-        debugPrint('[PermissionProvider] Android 13+，检查 READ_MEDIA_IMAGES 和 READ_MEDIA_VIDEO');
+        debugPrint('[PermissionProvider] Android 13+, checking READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO');
         final imageStatus = await Permission.photos.status;
         final videoStatus = await Permission.videos.status;
-        
-        if (imageStatus.isGranted && videoStatus.isGranted) {
+        final audioStatus = await Permission.audio.status;
+
+        if (imageStatus.isGranted && videoStatus.isGranted && audioStatus.isGranted) {
           status = PermissionStatus.granted;
-        } else if (imageStatus.isPermanentlyDenied || videoStatus.isPermanentlyDenied) {
+        } else if (imageStatus.isPermanentlyDenied || videoStatus.isPermanentlyDenied || audioStatus.isPermanentlyDenied) {
           status = PermissionStatus.permanentlyDenied;
-        } else if (imageStatus.isDenied || videoStatus.isDenied) {
+        } else if (imageStatus.isDenied || videoStatus.isDenied || audioStatus.isDenied) {
           status = PermissionStatus.denied;
         } else {
           status = PermissionStatus.notDetermined;
         }
       } else {
-        // Android 12 及以下使用 READ_EXTERNAL_STORAGE
-        debugPrint('[PermissionProvider] Android 12 及以下，检查 READ_EXTERNAL_STORAGE');
+        debugPrint('[PermissionProvider] Android 12 and below, checking READ_EXTERNAL_STORAGE');
         final storageStatus = await Permission.storage.status;
-        
+
         if (storageStatus.isGranted) {
           status = PermissionStatus.granted;
         } else if (storageStatus.isPermanentlyDenied) {
@@ -74,60 +94,50 @@ class PermissionNotifier extends StateNotifier<PermissionState> {
         }
       }
     } else {
-      // 非 Android 平台默认授予
       status = PermissionStatus.granted;
     }
-    
-    debugPrint('[PermissionProvider] 初始权限状态: $status');
-    
+
+    debugPrint('[PermissionProvider] Initial permission status: $status');
+
     state = state.copyWith(storagePermission: status);
   }
 
-  Future<bool> _isAndroid13OrHigher() async {
-    // 简化处理，我们根据 permission_handler 的行为判断
-    // 如果 photos 和 videos 权限存在，就是 Android 13+
-    try {
-      await Permission.photos.status;
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
   Future<bool> requestStoragePermission() async {
-    debugPrint('[PermissionProvider] ======== 请求存储权限 ========');
-    
+    debugPrint('[PermissionProvider] ======== Requesting storage permission ========');
+
     state = state.copyWith(hasRequestedBefore: true);
-    
+
     bool granted;
-    
+
     if (defaultTargetPlatform == TargetPlatform.android) {
       if (await _isAndroid13OrHigher()) {
-        debugPrint('[PermissionProvider] Android 13+，请求 READ_MEDIA_IMAGES 和 READ_MEDIA_VIDEO');
+        debugPrint('[PermissionProvider] Android 13+, requesting READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO');
         final results = await [
           Permission.photos,
           Permission.videos,
+          Permission.audio,
         ].request();
-        
-        granted = results[Permission.photos]?.isGranted == true && 
-                  results[Permission.videos]?.isGranted == true;
+
+        granted = results[Permission.photos]?.isGranted == true &&
+                  results[Permission.videos]?.isGranted == true &&
+                  results[Permission.audio]?.isGranted == true;
       } else {
-        debugPrint('[PermissionProvider] Android 12 及以下，请求 READ_EXTERNAL_STORAGE');
+        debugPrint('[PermissionProvider] Android 12 and below, requesting READ_EXTERNAL_STORAGE');
         final result = await Permission.storage.request();
         granted = result.isGranted;
       }
     } else {
       granted = true;
     }
-    
-    final newStatus = granted 
-        ? PermissionStatus.granted 
-        : (await _isPermanentlyDenied() 
-            ? PermissionStatus.permanentlyDenied 
+
+    final newStatus = granted
+        ? PermissionStatus.granted
+        : (await _isPermanentlyDenied()
+            ? PermissionStatus.permanentlyDenied
             : PermissionStatus.denied);
-    
-    debugPrint('[PermissionProvider] 请求结果: granted=$granted, status=$newStatus');
-    
+
+    debugPrint('[PermissionProvider] Request result: granted=$granted, status=$newStatus');
+
     state = state.copyWith(storagePermission: newStatus);
     return granted;
   }
@@ -137,7 +147,8 @@ class PermissionNotifier extends StateNotifier<PermissionState> {
       if (await _isAndroid13OrHigher()) {
         final imageStatus = await Permission.photos.status;
         final videoStatus = await Permission.videos.status;
-        return imageStatus.isPermanentlyDenied || videoStatus.isPermanentlyDenied;
+        final audioStatus = await Permission.audio.status;
+        return imageStatus.isPermanentlyDenied || videoStatus.isPermanentlyDenied || audioStatus.isPermanentlyDenied;
       } else {
         final storageStatus = await Permission.storage.status;
         return storageStatus.isPermanentlyDenied;
@@ -147,12 +158,13 @@ class PermissionNotifier extends StateNotifier<PermissionState> {
   }
 
   Future<void> openAppSettingsPage() async {
-    debugPrint('[PermissionProvider] 打开应用设置页面');
+    debugPrint('[PermissionProvider] Opening app settings');
     await openAppSettings();
   }
 
   Future<void> refreshPermissionStatus() async {
-    debugPrint('[PermissionProvider] 刷新权限状态');
+    debugPrint('[PermissionProvider] Refreshing permission status');
+    _isAndroid13Plus = null;
     await _checkInitialPermissions();
   }
 }

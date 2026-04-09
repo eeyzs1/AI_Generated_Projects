@@ -1,6 +1,8 @@
 const Map<String, String> enUS = {
   // App 通用
   'appName': 'RFPlayer',
+  'home': 'Home',
+  'files': 'Files',
   'recentPlays': 'Recent Plays',
   'bookmarks': 'Bookmarks',
   'noRecentPlays': 'No recent plays',

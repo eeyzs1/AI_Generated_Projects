@@ -59,6 +59,8 @@ dependencies:
   fluttertoast: ^8.2.12
   file_selector: ^1.1.0
   saf_stream: ^2.0.0
+  device_info_plus: ^12.4.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

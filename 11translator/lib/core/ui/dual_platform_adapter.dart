@@ -33,7 +33,7 @@ class DualPlatformApp extends ConsumerWidget {
     if (framework == UIFramework.fluent) {
       return fluent.FluentApp(
         title: 'RFDictionary',
-        localizationsDelegates: [
+        localizationsDelegates: const [
           AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -65,12 +65,12 @@ class DualPlatformApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'RFDictionary',
-      localizationsDelegates: [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
       supportedLocales: const [
         Locale('en'),
         Locale('zh'),

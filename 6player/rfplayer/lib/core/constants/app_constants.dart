@@ -1,5 +1,7 @@
 class AppConstants {
+  AppConstants._();
+
   static const String dbFileName = 'rfplayer.db';
-  static const String thumbnailCacheDir = 'thumbnails';
-  static const int defaultHistoryLimit = 100;
+  static const int dbVersion = 5;
+  static const String appName = 'RFPlayer';
 }

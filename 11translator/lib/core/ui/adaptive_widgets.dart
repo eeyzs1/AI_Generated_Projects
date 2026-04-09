@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:rfdictionary/core/localization/app_localizations.dart';
-
-UIStyle _getEffectiveStyle(UIStyle style) {
-  // 暂时只使用 Material Design
-  return UIStyle.material3;
-}
 
 class AdaptiveScaffold extends ConsumerWidget {
   final Widget? appBar;
@@ -163,7 +157,7 @@ class AdaptiveNavigationBar extends ConsumerWidget {
                 icon: Icon(d.icon),
                 selectedIcon: Icon(d.selectedIcon),
                 label: d.label,
-              ))
+              ),)
           .toList(),
     );
   }

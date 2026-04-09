@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:rfdictionary/core/localization/app_localizations.dart';
 import 'package:rfdictionary/core/utils/platform_utils.dart';
+import 'package:rfdictionary/features/dictionary/presentation/screens/dictionary_manager_screen.dart';
 import 'package:rfdictionary/features/dictionary/presentation/screens/home_screen.dart';
 import 'package:rfdictionary/features/dictionary/presentation/screens/word_detail_screen.dart';
 import 'package:rfdictionary/features/favorites/presentation/screens/favorites_screen.dart';
@@ -77,6 +78,13 @@ final appRouter = GoRouter(
                 child: ModelDownloadScreen(),
               ),
             ),
+            GoRoute(
+              path: 'dictionary-manager',
+              parentNavigatorKey: _rootNavigatorKey,
+              pageBuilder: (context, state) => const MaterialPage(
+                child: DictionaryManagerScreen(),
+              ),
+            ),
           ],
         ),
       ],
@@ -121,13 +129,13 @@ class _ScaffoldWithNavigationState extends ConsumerState<_ScaffoldWithNavigation
                       icon: Icon(d.icon),
                       selectedIcon: Icon(d.selectedIcon),
                       label: Text(_getLabel(context, d.labelKey)),
-                    ))
+                    ),)
                 .toList(),
             labelType: NavigationRailLabelType.all,
           ),
           const VerticalDivider(width: 1),
           Expanded(child: widget.child),
-        ]),
+        ],),
       );
     }
 
@@ -143,7 +151,7 @@ class _ScaffoldWithNavigationState extends ConsumerState<_ScaffoldWithNavigation
                   icon: Icon(d.icon),
                   selectedIcon: Icon(d.selectedIcon),
                   label: _getLabel(context, d.labelKey),
-                ))
+                ),)
             .toList(),
       ),
     );

@@ -1,29 +1,22 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/repositories/video_bookmark_repository.dart';
 import '../../data/models/video_bookmark.dart';
+import '../../data/repositories/video_bookmark_repository.dart';
 import './database_provider.dart';
-
-final videoBookmarkRepositoryProvider = Provider((ref) {
-  final dao = ref.watch(videoBookmarkDaoProvider);
-  return VideoBookmarkRepository(dao);
-});
 
 final videoBookmarkProvider = StateNotifierProvider<VideoBookmarkNotifier, List<VideoBookmark>>((ref) {
   return VideoBookmarkNotifier(ref);
 });
 
 final videoBookmarksForVideoProvider = FutureProvider.family<List<VideoBookmark>, String>((ref, videoPath) async {
-  final repository = ref.watch(videoBookmarkRepositoryProvider);
+  final repository = ref.read(videoBookmarkRepositoryProvider);
   return await repository.getByVideoPath(videoPath);
 });
 
 class VideoBookmarkNotifier extends StateNotifier<List<VideoBookmark>> {
-  final Ref ref;
-  final VideoBookmarkRepository _repository;
+  final Ref _ref;
+  VideoBookmarkRepository get _repository => _ref.read(videoBookmarkRepositoryProvider);
 
-  VideoBookmarkNotifier(this.ref) 
-    : _repository = ref.watch(videoBookmarkRepositoryProvider),
-      super([]) {
+  VideoBookmarkNotifier(this._ref) : super([]) {
     _loadBookmarks();
   }
 

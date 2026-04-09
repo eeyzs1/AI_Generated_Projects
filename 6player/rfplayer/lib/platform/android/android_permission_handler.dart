@@ -1,51 +1,79 @@
+import 'dart:io';
 import '../../domain/services/permission_service.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 class AndroidPermissionHandler extends PermissionServiceImpl {
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
+  Future<bool> _isAndroid13OrHigher() async {
+    try {
+      final androidInfo = await _deviceInfo.androidInfo;
+      return androidInfo.version.sdkInt >= 33;
+    } catch (e) {
+      return true;
+    }
+  }
+
   @override
   Future<bool> requestStoragePermission() async {
-    final status = await Permission.storage.request();
-    return status.isGranted;
+    if (await _isAndroid13OrHigher()) {
+      final results = await [
+        Permission.photos,
+        Permission.videos,
+        Permission.audio,
+      ].request();
+      return results[Permission.photos]?.isGranted == true &&
+             results[Permission.videos]?.isGranted == true &&
+             results[Permission.audio]?.isGranted == true;
+    } else {
+      final status = await Permission.storage.request();
+      return status.isGranted;
+    }
   }
 
   @override
   Future<bool> hasStoragePermission() async {
-    final status = await Permission.storage.status;
-    return status.isGranted;
+    if (await _isAndroid13OrHigher()) {
+      final imageStatus = await Permission.photos.status;
+      final videoStatus = await Permission.videos.status;
+      final audioStatus = await Permission.audio.status;
+      return imageStatus.isGranted && videoStatus.isGranted && audioStatus.isGranted;
+    } else {
+      final status = await Permission.storage.status;
+      return status.isGranted;
+    }
   }
 
   @override
   Future<bool> requestMediaLibraryPermission() async {
-    final status = await Permission.mediaLibrary.request();
-    return status.isGranted;
+    if (Platform.isIOS || Platform.isMacOS) {
+      final status = await Permission.photos.request();
+      return status.isGranted;
+    }
+    return true;
   }
 
   @override
   Future<bool> hasMediaLibraryPermission() async {
-    final status = await Permission.mediaLibrary.status;
-    return status.isGranted;
+    if (Platform.isIOS || Platform.isMacOS) {
+      final status = await Permission.photos.status;
+      return status.isGranted;
+    }
+    return true;
   }
-  
-  /// 专门用于处理 content URI 的权限请求
-  /// 如果传入 content URI，会请求必要的访问权限
-  /// 返回是否有权限访问该 URI
+
   Future<bool> requestPermissionForContentUri(String uri) async {
     if (!uri.startsWith('content://')) {
-      // 不是 content URI，不需要特殊权限
       return true;
     }
-    
-    // 对于 content URI，我们需要请求存储权限
     return await requestStoragePermission();
   }
-  
-  /// 检查是否有权限访问 content URI
+
   Future<bool> hasPermissionForContentUri(String uri) async {
     if (!uri.startsWith('content://')) {
-      // 不是 content URI，默认有权限
       return true;
     }
-    
     return await hasStoragePermission();
   }
 }
