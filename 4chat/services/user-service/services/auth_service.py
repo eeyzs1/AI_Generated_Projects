@@ -5,15 +5,23 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from models.user import User
 from models.refresh_token import RefreshToken
+from models.pending_registration import PendingRegistration
 from schemas.user import TokenData
 import secrets
+import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 ALGORITHM = os.environ.get("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+PENDING_REGISTRATION_TTL = int(os.environ.get("PENDING_REGISTRATION_TTL", "1800"))
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+REDIS_REG_KEY_PREFIX = "reg:pending:"
 
 class KeyManagementService:
     def __init__(self):
@@ -82,6 +90,15 @@ def get_user_by_verification_token(db: Session, token: str):
 def get_user_by_reset_token(db: Session, token: str):
     return db.query(User).filter(User.reset_token == token).first()
 
+def get_pending_by_token(db: Session, token: str):
+    return db.query(PendingRegistration).filter(PendingRegistration.token == token).first()
+
+def get_pending_by_username(db: Session, username: str):
+    return db.query(PendingRegistration).filter(PendingRegistration.username == username).first()
+
+def get_pending_by_email(db: Session, email: str):
+    return db.query(PendingRegistration).filter(PendingRegistration.email == email).first()
+
 def authenticate_user(db: Session, username: str, password: str):
     user = get_user_by_username(db, username)
     if not user:
@@ -138,15 +155,125 @@ def revoke_refresh_token(db: Session, user_id: int):
     db.query(RefreshToken).filter(RefreshToken.user_id == user_id).update({"revoked": True})
     db.commit()
 
-def send_verification_email(user: User):
-    from services.common.celery_tasks import send_verification_email_task
+def store_pending_registration(redis_client, db: Session, username: str, displayname: str,
+                                email: str, password_hash: str, avatar: Optional[str] = None):
     token = secrets.token_urlsafe(32)
-    user.verification_token = token
-    user.verification_expiry = datetime.utcnow() + timedelta(hours=24)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(seconds=PENDING_REGISTRATION_TTL)
+
+    pending_data = {
+        "token": token,
+        "username": username,
+        "displayname": displayname,
+        "email": email,
+        "password_hash": password_hash,
+        "avatar": avatar or "",
+        "expires_at": expires_at.isoformat(),
+    }
+
+    redis_key = f"{REDIS_REG_KEY_PREFIX}{token}"
+    try:
+        redis_client.setex(redis_key, PENDING_REGISTRATION_TTL, json.dumps(pending_data))
+    except Exception as e:
+        logger.warning(f"Redis write failed for pending registration: {e}")
+
+    pending_record = PendingRegistration(
+        token=token,
+        username=username,
+        displayname=displayname,
+        email=email,
+        password_hash=password_hash,
+        avatar=avatar,
+        expires_at=expires_at,
+    )
+    db.add(pending_record)
+    db.commit()
+
+    return token
+
+def retrieve_pending_registration(redis_client, db: Session, token: str) -> Optional[Dict[str, Any]]:
+    redis_key = f"{REDIS_REG_KEY_PREFIX}{token}"
+
+    try:
+        cached = redis_client.get(redis_key)
+        if cached:
+            data = json.loads(cached)
+            if datetime.utcnow() < datetime.fromisoformat(data["expires_at"]):
+                return data
+            try:
+                redis_client.delete(redis_key)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Redis read failed, falling back to MySQL: {e}")
+
+    pending_record = get_pending_by_token(db, token)
+    if not pending_record:
+        return None
+    if pending_record.expires_at < datetime.utcnow():
+        db.delete(pending_record)
+        db.commit()
+        return None
+
+    return {
+        "token": pending_record.token,
+        "username": pending_record.username,
+        "displayname": pending_record.displayname,
+        "email": pending_record.email,
+        "password_hash": pending_record.password_hash,
+        "avatar": pending_record.avatar or "",
+        "expires_at": pending_record.expires_at.isoformat(),
+    }
+
+def finalize_registration(redis_client, db: Session, token: str) -> Optional[User]:
+    pending_data = retrieve_pending_registration(redis_client, db, token)
+    if not pending_data:
+        return None
+
+    if db.query(User).filter(User.username == pending_data["username"]).first():
+        raise ValueError("Username already registered")
+    if db.query(User).filter(User.email == pending_data["email"]).first():
+        raise ValueError("Email already registered")
+
+    new_user = User(
+        username=pending_data["username"],
+        displayname=pending_data["displayname"],
+        email=pending_data["email"],
+        password_hash=pending_data["password_hash"],
+        avatar=pending_data["avatar"] or None,
+        email_verified=True,
+        is_active=True,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    redis_key = f"{REDIS_REG_KEY_PREFIX}{token}"
+    try:
+        redis_client.delete(redis_key)
+    except Exception as e:
+        logger.warning(f"Redis delete failed after finalization: {e}")
+
+    pending_record = get_pending_by_token(db, token)
+    if pending_record:
+        db.delete(pending_record)
+        db.commit()
+
+    return new_user
+
+def send_verification_email(redis_client, db: Session, username: str, displayname: str,
+                            email: str, password_hash: str, avatar: Optional[str] = None):
+    from services.common.celery_tasks import send_verification_email_task
+
+    token = store_pending_registration(redis_client, db, username, displayname,
+                                       email, password_hash, avatar)
     link = f"{FRONTEND_URL}/verify-email?token={token}"
-    body = f"<h1>Verify your email</h1><p><a href='{link}'>Verify Email</a></p><p>Expires in 24 hours.</p>"
-    send_verification_email_task.delay(user.email, "Verify your email", body)
-    return True
+    body = (f"<h1>Verify your email</h1>"
+            f"<p>Hi {displayname},</p>"
+            f"<p><a href='{link}'>Verify Email</a></p>"
+            f"<p>This link expires in 30 minutes.</p>")
+    send_verification_email_task.delay(email, "Verify your email", body)
+    return token
 
 def send_password_reset_email(user: User):
     from services.common.celery_tasks import send_password_reset_email_task

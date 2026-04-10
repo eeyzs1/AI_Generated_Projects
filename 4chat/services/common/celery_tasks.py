@@ -270,6 +270,24 @@ def reindex_rooms_task(self):
 
 
 @celery_app.task(queue="maintenance")
+def cleanup_expired_pending_registrations():
+    from sqlalchemy import create_engine, text
+
+    if not DATABASE_URL:
+        return {"status": "skipped", "reason": "no DATABASE_URL"}
+
+    engine = create_engine(DATABASE_URL)
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("DELETE FROM pending_registrations WHERE expires_at < :now"),
+            {"now": datetime.utcnow()}
+        )
+        conn.commit()
+        deleted = result.rowcount
+    return {"deleted_count": deleted}
+
+
+@celery_app.task(queue="maintenance")
 def cleanup_expired_tokens():
     from sqlalchemy import create_engine, text
 

@@ -27,12 +27,17 @@ celery_app.conf.update(
         "services.common.celery_tasks.reindex_messages_task": {"queue": "search"},
         "services.common.celery_tasks.reindex_users_task": {"queue": "search"},
         "services.common.celery_tasks.reindex_rooms_task": {"queue": "search"},
+        "services.common.celery_tasks.cleanup_expired_pending_registrations": {"queue": "maintenance"},
         "services.common.celery_tasks.cleanup_expired_tokens": {"queue": "maintenance"},
         "services.common.celery_tasks.rotate_jwt_keys": {"queue": "maintenance"},
         "services.common.celery_tasks.cleanup_orphan_avatars": {"queue": "maintenance"},
         "services.common.celery_tasks.es_index_health_check": {"queue": "search"},
     },
     beat_schedule={
+        "cleanup-expired-pending-registrations": {
+            "task": "services.common.celery_tasks.cleanup_expired_pending_registrations",
+            "schedule": crontab(minute="*/30"),
+        },
         "cleanup-expired-tokens": {
             "task": "services.common.celery_tasks.cleanup_expired_tokens",
             "schedule": crontab(hour=3, minute=0),
