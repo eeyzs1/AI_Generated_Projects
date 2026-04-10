@@ -1,0 +1,18 @@
+[submodule "rfplayer"]
+	path = rfplayer
+	url = git@github.com:eeyzs1/rfplayer.git
+[submodule "pytorch_general_techs"]
+	path = pytorch_general_techs
+	url = git@github.com:eeyzs1/pytorch_general_techs.git
+[submodule "agent_dev"]
+	path = agent_dev
+	url = git@github.com:eeyzs1/agent_dev.git
+[submodule "rftranslator"]
+	path = rftranslator
+	url = git@github.com:eeyzs1/rftranslator.git
+[submodule "agent_demos"]
+	path = agent_demos
+	url = git@github.com:eeyzs1/agent_demos.git
+[submodule "FE"]
+	path = FE
+	url = git@github.com:eeyzs1/FE.git
