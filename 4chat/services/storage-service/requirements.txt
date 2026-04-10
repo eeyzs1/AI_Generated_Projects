@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-python-jose[cryptography]
-cryptography
-python-dotenv
-python-multipart
-nacos-sdk-python

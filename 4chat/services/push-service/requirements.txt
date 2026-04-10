@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-python-jose[cryptography]
-aiokafka
-redis
-nacos-sdk-python
-python-dotenv
-celery[redis]>=5.4.0

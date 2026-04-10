@@ -1,8 +1,0 @@
-# k8s/overlays/multi-cluster/replica-patch.yaml
-# 多集群场景下每个服务跑多个副本，提高可用性
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: placeholder
-spec:
-  replicas: 2

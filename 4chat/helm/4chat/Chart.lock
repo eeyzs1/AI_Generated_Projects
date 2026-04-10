@@ -1,9 +1,0 @@
-dependencies:
-- name: middleware
-  repository: file://../middleware
-  version: 0.1.0
-- name: services
-  repository: file://../services
-  version: 0.1.0
-digest: sha256:eef61e14c864842f45e33b6aeb4dda31e56d40374ea938774cb55974d531158e
-generated: "2026-03-29T09:22:26.484919666+08:00"
