@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use rand::Rng;
 use std::collections::HashSet;
 
@@ -38,7 +38,7 @@ impl IndexPQ {
 
     fn train(&mut self, x: Vec<Vec<f32>>) -> PyResult<()> {
         let n = x.len();
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let dim_sub = dim / self.M;
 
         self.codebooks.resize(self.M * self.ksub * dim_sub, 0.0);
@@ -60,8 +60,8 @@ impl IndexPQ {
             return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Index not trained"));
         }
 
-        let dim = self.storage.dimension;
-        let _old_total = self.storage.size;
+        let dim = self.storage.dimension();
+        let _old_total = self.storage.size();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
@@ -81,51 +81,51 @@ impl IndexPQ {
         Ok(())
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
-        let dim = self.storage.dimension;
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
+        let dim = self.storage.dimension();
         let dim_sub = dim / self.M;
-        let mut all_labels = Vec::with_capacity(x.len());
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
             let mut query_code = vec![0u8; self.M];
             Self::encode_vector_static(&query, &mut query_code, &self.codebooks, self.M, self.ksub, dim);
 
-            let mut results = Vec::with_capacity(self.storage.size);
-            for i in 0..self.storage.size {
+            let mut results = Vec::with_capacity(self.storage.size());
+            for i in 0..self.storage.size() {
                 let code = &self.codes[i * self.M..(i + 1) * self.M];
                 let dist = self.compute_distance(&query_code, code, dim_sub);
                 results.push((dist, i as i64));
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            results.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -197,6 +197,22 @@ impl IndexPQ {
                         let shift = (new_val - old_val).abs();
                         if shift > max_shift {
                             max_shift = shift;
+                        }
+                    }
+                } else {
+                    let mut largest_k = 0;
+                    let mut largest_count = 0usize;
+                    for kk in 0..self.ksub {
+                        if counts[kk] > largest_count {
+                            largest_count = counts[kk];
+                            largest_k = kk;
+                        }
+                    }
+                    if largest_count > 1 {
+                        let mut rng = rand::thread_rng();
+                        let perturbation: f32 = rng.gen_range(0.01..0.1);
+                        for j in 0..dim_sub {
+                            centroids[k * dim_sub + j] = centroids[largest_k * dim_sub + j] + perturbation;
                         }
                     }
                 }

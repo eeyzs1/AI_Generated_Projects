@@ -24,6 +24,9 @@ from services.contact_service import (
     get_user_contacts, remove_contact, search_users
 )
 from nacos_client import register_service
+from kafka_producer import publish
+
+CDN_BASE_URL = os.environ.get("CDN_BASE_URL", "")
 
 Base.metadata.create_all(bind=engine)
 
@@ -77,12 +80,22 @@ def save_base64_avatar(base64_data: str) -> str:
     filename = f"{uuid.uuid4()}.{ext}"
     with open(os.path.join(AVATAR_UPLOAD_DIR, filename), "wb") as f:
         f.write(data)
-    return f"/api/storage/static/avatars/{filename}"
+    path = f"/api/storage/static/avatars/{filename}"
+    if CDN_BASE_URL:
+        return path.replace("/api/storage/static/", f"{CDN_BASE_URL}/static/")
+    return path
+
+def get_avatar_url(avatar_path: str) -> str:
+    if not avatar_path:
+        return avatar_path
+    if CDN_BASE_URL and avatar_path.startswith("/api/storage/static/"):
+        return avatar_path.replace("/api/storage/static/", f"{CDN_BASE_URL}/static/")
+    return avatar_path
 
 # ── Public ─────────────────────────────────────────────────────
 
 @app.post("/api/user/register")
-def register(user: UserCreate, db: Session = Depends(get_db)):
+async def register(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == user.username).first():
         raise HTTPException(400, "Username already registered")
     if db.query(User).filter(User.email == user.email).first():
@@ -97,6 +110,15 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     send_verification_email(db_user)
     db.commit()
+    await publish("user_updated", {
+        "type": "user_updated",
+        "user_id": db_user.id,
+        "username": db_user.username,
+        "displayname": db_user.displayname,
+        "email": db_user.email,
+        "avatar": db_user.avatar,
+        "is_active": db_user.is_active
+    })
     return {"message": "Registration successful. Please check your email to verify your account."}
 
 @app.get("/api/user/verify-email")
@@ -178,7 +200,7 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
     return resp
 
 @app.put("/api/user/me", response_model=UserSchema)
-def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         if user_update.username != current_user.username and db.query(User).filter(User.username == user_update.username).first():
             raise HTTPException(400, "Username already registered")
@@ -194,6 +216,15 @@ def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_
         db.commit()
         db.refresh(current_user)
         redis.delete(f"user:{current_user.id}")
+        await publish("user_updated", {
+            "type": "user_updated",
+            "user_id": current_user.id,
+            "username": current_user.username,
+            "displayname": current_user.displayname,
+            "email": current_user.email,
+            "avatar": current_user.avatar,
+            "is_active": current_user.is_active
+        })
         return current_user
     except HTTPException:
         raise
@@ -267,8 +298,9 @@ def get_user_internal(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
+    avatar = get_avatar_url(user.avatar) if user.avatar else user.avatar
     data = {"id": user.id, "username": user.username, "displayname": user.displayname,
-            "email": user.email, "avatar": user.avatar, "is_active": user.is_active,
+            "email": user.email, "avatar": avatar, "is_active": user.is_active,
             "email_verified": user.email_verified}
     redis.setex(f"user:{user_id}", 300, json.dumps(data))
     return data

@@ -7,22 +7,12 @@ from models.user import User
 from models.refresh_token import RefreshToken
 from schemas.user import TokenData
 import secrets
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import os
-import time
-import threading
 
 ALGORITHM = os.environ.get("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
-KEY_ROTATION_INTERVAL_HOURS = int(os.environ.get("KEY_ROTATION_INTERVAL_HOURS", "24"))
 
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 class KeyManagementService:
@@ -71,21 +61,6 @@ class KeyManagementService:
             self.refresh_keys = [k for k in self.refresh_keys if k["is_active"]]
 
 kms = KeyManagementService()
-
-def rotate_keys_periodically():
-    while True:
-        try:
-            for kt in ("access", "refresh"):
-                kms.delete_old_keys(kt)
-                kms.deactivate_old_keys(kt)
-                kms.generate_new_key(kt)
-            print(f"Keys rotated at {datetime.now(timezone.utc)}")
-        except Exception as e:
-            print(f"Error rotating keys: {e}")
-        time.sleep(KEY_ROTATION_INTERVAL_HOURS * 3600)
-
-if KEY_ROTATION_INTERVAL_HOURS > 0:
-    threading.Thread(target=rotate_keys_periodically, daemon=True).start()
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -163,38 +138,22 @@ def revoke_refresh_token(db: Session, user_id: int):
     db.query(RefreshToken).filter(RefreshToken.user_id == user_id).update({"revoked": True})
     db.commit()
 
-def send_email(to_email, subject, body):
-    if not SMTP_USER or not SMTP_PASSWORD:
-        print(f"[Email skipped] To: {to_email} | Subject: {subject}")
-        return True
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = SMTP_USER
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "html"))
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Error sending email: {e}")
-        return False
-
 def send_verification_email(user: User):
+    from services.common.celery_tasks import send_verification_email_task
     token = secrets.token_urlsafe(32)
     user.verification_token = token
     user.verification_expiry = datetime.utcnow() + timedelta(hours=24)
     link = f"{FRONTEND_URL}/verify-email?token={token}"
     body = f"<h1>Verify your email</h1><p><a href='{link}'>Verify Email</a></p><p>Expires in 24 hours.</p>"
-    return send_email(user.email, "Verify your email", body)
+    send_verification_email_task.delay(user.email, "Verify your email", body)
+    return True
 
 def send_password_reset_email(user: User):
+    from services.common.celery_tasks import send_password_reset_email_task
     token = secrets.token_urlsafe(32)
     user.reset_token = token
     user.reset_expiry = datetime.utcnow() + timedelta(hours=1)
     link = f"{FRONTEND_URL}/reset-password?token={token}"
     body = f"<h1>Reset your password</h1><p><a href='{link}'>Reset Password</a></p><p>Expires in 1 hour.</p>"
-    return send_email(user.email, "Reset your password", body)
+    send_password_reset_email_task.delay(user.email, "Reset your password", body)
+    return True

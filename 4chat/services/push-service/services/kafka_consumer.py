@@ -62,7 +62,6 @@ async def consume_messages():
                 continue
             r = await get_redis()
             member_ids = await get_room_members(room_id)
-            tasks = []
             for uid in member_ids:
                 if uid == sender_id:
                     continue
@@ -70,8 +69,6 @@ async def consume_messages():
                 if not is_online:
                     email = await get_user_email(uid)
                     if email:
-                        tasks.append(send_offline_notification(email, sender_name, content))
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+                        send_offline_notification(email, sender_name, content)
     finally:
         await consumer.stop()

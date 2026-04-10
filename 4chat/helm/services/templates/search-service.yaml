@@ -1,0 +1,65 @@
+{{- if .Values.searchService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service
+  labels:
+    app: search-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: search-service
+  replicas: {{ .Values.searchService.replicas }}
+  template:
+    metadata:
+      labels:
+        app: search-service
+    spec:
+      containers:
+        - name: search-service
+          image: {{ include "services.image" (list . .Values.searchService.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8007
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: {{ .Values.global.elasticsearch.hosts }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.global.kafka.bootstrapServers }}
+            - name: NACOS_HOST
+              value: {{ .Values.global.nacos.host }}
+            - name: NACOS_PORT
+              value: {{ .Values.global.nacos.port | quote }}
+            - name: SERVICE_HOST
+              value: search-service
+            - name: SERVICE_PORT
+              value: "8007"
+            - name: SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+            - name: ACCESS_SECRET_KEY
+              value: {{ .Values.global.secretKey | quote }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-service
+  labels:
+    app: search-service
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: search-service
+  ports:
+    - port: 8007
+{{- end }}

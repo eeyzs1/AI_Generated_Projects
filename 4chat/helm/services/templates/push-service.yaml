@@ -47,6 +47,10 @@ spec:
               value: {{ .Values.pushService.smtp.user | quote }}
             - name: SMTP_PASSWORD
               value: {{ .Values.pushService.smtp.password | quote }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
           readinessProbe:
             httpGet:
               path: /health

@@ -17,6 +17,33 @@ use rayon::prelude::*;
 use vectordb_core::distance::compute_ip_distance;
 use vectordb_core::VectorStorage;
 
+fn validate_buffer_contiguous(buffer: &pyo3::buffer::PyBuffer<f32>) -> PyResult<()> {
+    if (buffer.buf_ptr() as usize) % std::mem::align_of::<f32>() != 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Input array is not properly aligned for f32",
+        ));
+    }
+
+    let shape = buffer.shape();
+    let strides = buffer.strides();
+    let item_size = std::mem::size_of::<f32>() as isize;
+
+    if shape.len() == 2 {
+        let expected_stride_1 = item_size;
+        let expected_stride_0 = (shape[1] as isize) * item_size;
+        if strides.len() < 2
+            || strides[1] != expected_stride_1
+            || strides[0] != expected_stride_0
+        {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Input array must be C-contiguous. Use numpy.ascontiguousarray() to convert.",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Flat Inner Product (IP) index for vector similarity search using brute-force approach
 /// 
 /// This index calculates exact nearest neighbors by comparing the query vector
@@ -44,20 +71,20 @@ impl FlatIPIndex {
         }
 
         let first_dim = vectors[0].len();
-        if self.storage.dimension == 0 {
+        if self.storage.dimension() == 0 {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Dimension not set, use new(dimension) instead",
             ));
-        } else if self.storage.dimension != first_dim {
+        } else if self.storage.dimension() != first_dim {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "All vectors must have the same dimension",
             ));
         }
 
         let num_vectors = vectors.len();
-        let mut flat_data = Vec::with_capacity(num_vectors * self.storage.dimension);
+        let mut flat_data = Vec::with_capacity(num_vectors * self.storage.dimension());
         for vec in vectors {
-            if vec.len() != self.storage.dimension {
+            if vec.len() != self.storage.dimension() {
                 return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                     "All vectors must have the same dimension",
                 ));
@@ -90,15 +117,17 @@ impl FlatIPIndex {
             return Ok(());
         }
 
-        if self.storage.dimension == 0 {
+        if self.storage.dimension() == 0 {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Dimension not set, use new(dimension) instead",
             ));
-        } else if self.storage.dimension != dim {
+        } else if self.storage.dimension() != dim {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Dimension mismatch",
             ));
         }
+
+        validate_buffer_contiguous(&buffer)?;
 
         let buffer_ptr = buffer.buf_ptr() as *const f32;
         let slice = unsafe { std::slice::from_raw_parts(buffer_ptr, num_vectors * dim) };
@@ -108,11 +137,11 @@ impl FlatIPIndex {
     }
 
     fn search(&self, query: Vec<f32>, k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
-        if self.storage.size == 0 {
+        if self.storage.size() == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
 
-        if query.len() != self.storage.dimension {
+        if query.len() != self.storage.dimension() {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Query vector dimension mismatch",
             ));
@@ -124,7 +153,7 @@ impl FlatIPIndex {
     fn search_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
         use pyo3::buffer::PyBuffer;
 
-        if self.storage.size == 0 {
+        if self.storage.size() == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
 
@@ -149,20 +178,16 @@ impl FlatIPIndex {
 
         let dim = cols;
 
-        if dim != self.storage.dimension {
+        if dim != self.storage.dimension() {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Query vector dimension mismatch",
             ));
         }
 
-        let mut query_vec = Vec::with_capacity(dim);
+        validate_buffer_contiguous(&buffer)?;
+
         let buffer_ptr = buffer.buf_ptr() as *const f32;
-        unsafe {
-            for j in 0..dim {
-                let value = *buffer_ptr.offset(j as isize);
-                query_vec.push(value);
-            }
-        }
+        let query_vec = unsafe { std::slice::from_raw_parts(buffer_ptr, dim) }.to_vec();
 
         self.search_single(&query_vec, k)
     }
@@ -170,7 +195,7 @@ impl FlatIPIndex {
     fn search_batch_buf(&self, buffer: &Bound<'_, PyAny>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
         use pyo3::buffer::PyBuffer;
 
-        if self.storage.size == 0 {
+        if self.storage.size() == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
 
@@ -187,25 +212,16 @@ impl FlatIPIndex {
         let num_queries = shape[0];
         let dim = shape[1];
 
-        if dim != self.storage.dimension {
+        if dim != self.storage.dimension() {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Query vector dimension mismatch",
             ));
         }
 
-        let mut queries = Vec::with_capacity(num_queries);
-        let buffer_ptr = buffer.buf_ptr() as *const f32;
+        validate_buffer_contiguous(&buffer)?;
 
-        unsafe {
-            for i in 0..num_queries {
-                let mut query = Vec::with_capacity(dim);
-                for j in 0..dim {
-                    let value = *buffer_ptr.offset((i * dim + j) as isize);
-                    query.push(value);
-                }
-                queries.push(query);
-            }
-        }
+        let buffer_ptr = buffer.buf_ptr() as *const f32;
+        let buffer_slice = unsafe { std::slice::from_raw_parts(buffer_ptr, num_queries * dim) };
 
         let mut all_distances = Vec::with_capacity(num_queries);
         let mut all_labels = Vec::with_capacity(num_queries);
@@ -213,10 +229,24 @@ impl FlatIPIndex {
         let num_threads = self.calculate_optimal_search_threads();
 
         if num_threads > 1 && num_queries > 10 {
-            let results: Vec<PyResult<(Vec<f32>, Vec<i64>)>> = queries
-                .par_iter()
-                .map(|query| self.search_single(query, k))
-                .collect();
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(num_threads)
+                .build()
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Failed to create thread pool: {}", e)
+                ))?;
+            
+            let results: Vec<PyResult<(Vec<f32>, Vec<i64>)>> = pool.install(|| {
+                (0..num_queries)
+                    .into_par_iter()
+                    .map(|i| {
+                        let start = i * dim;
+                        let end = start + dim;
+                        let query = &buffer_slice[start..end];
+                        self.search_single(query, k)
+                    })
+                    .collect()
+            });
 
             for result in results {
                 let (distances, labels) = result?;
@@ -224,8 +254,11 @@ impl FlatIPIndex {
                 all_labels.push(labels);
             }
         } else {
-            for query in queries {
-                let (distances, labels) = self.search_single(&query, k)?;
+            for i in 0..num_queries {
+                let start = i * dim;
+                let end = start + dim;
+                let query = &buffer_slice[start..end];
+                let (distances, labels) = self.search_single(query, k)?;
                 all_distances.push(distances);
                 all_labels.push(labels);
             }
@@ -234,12 +267,38 @@ impl FlatIPIndex {
         Ok((all_distances, all_labels))
     }
 
-    fn size(&self) -> usize {
-        self.storage.size
+    #[getter]
+    fn ntotal(&self) -> usize {
+        self.storage.size()
     }
 
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
+    }
+
+    fn save(&self, path: &str) -> PyResult<()> {
+        use std::fs::File;
+        use std::io::Write;
+        
+        let bytes = self.storage.save_to_bytes();
+        let mut file = File::create(path)?;
+        file.write_all(&bytes)?;
+        Ok(())
+    }
+
+    #[staticmethod]
+    fn load(path: &str) -> PyResult<Self> {
+        use std::fs::File;
+        use std::io::Read;
+        
+        let mut file = File::open(path)?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        
+        let storage = VectorStorage::load_from_bytes(&bytes)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        
+        Ok(Self { storage })
     }
 }
 
@@ -269,23 +328,12 @@ impl FlatIPIndex {
         }
 
         if left < k {
-            unsafe {
-                let move_count = k - left - 1;
-                if move_count > 0 {
-                    std::ptr::copy(
-                        distances.as_ptr().add(left),
-                        distances.as_mut_ptr().add(left + 1),
-                        move_count,
-                    );
-                    std::ptr::copy(
-                        labels.as_ptr().add(left),
-                        labels.as_mut_ptr().add(left + 1),
-                        move_count,
-                    );
-                }
-                distances[left] = dist;
-                labels[left] = idx;
+            if k - left > 1 {
+                distances[left..k].rotate_right(1);
+                labels[left..k].rotate_right(1);
             }
+            distances[left] = dist;
+            labels[left] = idx;
         }
     }
 
@@ -293,17 +341,17 @@ impl FlatIPIndex {
     fn calculate_optimal_search_threads(&self) -> usize {
         let num_threads = num_cpus::get();
 
-        let num_threads = if self.storage.size > 500000 {
+        let num_threads = if self.storage.size() > 500000 {
             std::cmp::min(num_threads, 10)
-        } else if self.storage.size > 100000 {
+        } else if self.storage.size() > 100000 {
             std::cmp::min(num_threads, 6)
-        } else if self.storage.size > 10000 {
+        } else if self.storage.size() > 10000 {
             std::cmp::min(num_threads, 4)
         } else {
             1
         };
 
-        if self.storage.dimension > 256 {
+        if self.storage.dimension() > 256 {
             std::cmp::max(1, num_threads / 2)
         } else {
             num_threads
@@ -311,24 +359,26 @@ impl FlatIPIndex {
     }
 
     fn search_single(&self, query: &[f32], k: usize) -> PyResult<(Vec<f32>, Vec<i64>)> {
-        let mut top_distances = vec![f32::MIN; k];
-        let mut top_labels = vec![0i64; k];
+        let actual_k = std::cmp::min(k, self.storage.size());
 
-        if k == 0 || self.storage.size == 0 {
+        if actual_k == 0 {
             return Ok((Vec::new(), Vec::new()));
         }
 
-        let mut vec_ptr = self.storage.vectors.as_ptr();
-        let dim = self.storage.dimension;
+        let mut top_distances = vec![f32::MIN; actual_k];
+        let mut top_labels = vec![0i64; actual_k];
+
+        let mut vec_ptr = self.storage.data().as_ptr();
+        let dim = self.storage.dimension();
 
         let mut i = 0;
-        while i < self.storage.size {
+        while i < self.storage.size() {
             let dist = compute_ip_distance(
                 query,
                 unsafe { std::slice::from_raw_parts(vec_ptr, dim) },
             );
 
-            self.insert_top_k(&mut top_distances, &mut top_labels, k, dist, i as i64);
+            self.insert_top_k(&mut top_distances, &mut top_labels, actual_k, dist, i as i64);
             vec_ptr = unsafe { vec_ptr.add(dim) };
             i += 1;
         }

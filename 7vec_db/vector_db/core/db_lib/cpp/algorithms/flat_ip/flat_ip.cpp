@@ -6,6 +6,7 @@
 #include <execution>
 #include <numeric>
 #include <memory>
+#include <fstream>
 
 namespace vectordb {
 namespace algorithms {
@@ -85,18 +86,33 @@ inline void IndexFlatIP::compute_batch_distances(const float* query, const float
     }
 }
 
-void IndexFlatIP::search_single(const float* query, size_t k, float* distances, size_t* labels) const {
-    float top_distances[1024];
-    size_t top_labels[1024];
-
-    for (size_t i = 0; i < k; ++i) {
-        top_distances[i] = -std::numeric_limits<float>::max();
-        top_labels[i] = 0;
+inline void IndexFlatIP::insert_into_top_k(float dist, size_t label, float* top_distances, size_t* top_labels, size_t k) const {
+    if (dist > top_distances[k-1]) {
+        size_t left = 0, right = k;
+        while (left < right) {
+            size_t mid = (left + right) / 2;
+            if (dist > top_distances[mid]) {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        if (left < k) {
+            std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
+            std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
+            top_distances[left] = dist;
+            top_labels[left] = label;
+        }
     }
+}
+
+void IndexFlatIP::search_single(const float* query, size_t k, float* distances, size_t* labels) const {
+    std::vector<float> top_distances(k, -std::numeric_limits<float>::max());
+    std::vector<size_t> top_labels(k, 0);
 
     if (is_transposed()) {
         size_t block_size = ntotal < 200000 ? std::min(size_t(16384), ntotal) : std::min(size_t(4096), ntotal);
-        float batch_dists[16384];
+        std::vector<float> batch_dists(block_size);
 
         for (size_t block_start = 0; block_start < ntotal; block_start += block_size) {
             size_t block_end = std::min(block_start + block_size, ntotal);
@@ -104,29 +120,12 @@ void IndexFlatIP::search_single(const float* query, size_t k, float* distances, 
 
             for (size_t i = 0; i < block_len; i += 8) {
                 size_t batch = std::min(size_t(8), block_len - i);
-                compute_batch_distances_transposed(query, block_start + i, batch, batch_dists + i);
+                compute_batch_distances_transposed(query, block_start + i, batch, batch_dists.data() + i);
             }
 
             for (size_t i = 0; i < block_len; ++i) {
                 float dist = batch_dists[i];
-                if (dist > top_distances[k-1]) {
-                    size_t left = 0, right = k;
-                    while (left < right) {
-                        size_t mid = (left + right) / 2;
-                        if (dist > top_distances[mid]) {
-                            right = mid;
-                        } else {
-                            left = mid + 1;
-                        }
-                    }
-
-                    if (left < k) {
-                        std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                        std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                        top_distances[left] = dist;
-                        top_labels[left] = block_start + i;
-                    }
-                }
+                insert_into_top_k(dist, block_start + i, top_distances.data(), top_labels.data(), k);
             }
         }
     } else {
@@ -147,149 +146,14 @@ void IndexFlatIP::search_single(const float* query, size_t k, float* distances, 
             float dist6 = distance::compute_ip_distance(query, vec + 6 * d, d);
             float dist7 = distance::compute_ip_distance(query, vec + 7 * d, d);
 
-            if (dist0 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist0 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist0;
-                    top_labels[left] = i;
-                }
-            }
-
-            if (dist1 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist1 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist1;
-                    top_labels[left] = i + 1;
-                }
-            }
-
-            if (dist2 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist2 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist2;
-                    top_labels[left] = i + 2;
-                }
-            }
-
-            if (dist3 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist3 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist3;
-                    top_labels[left] = i + 3;
-                }
-            }
-
-            if (dist4 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist4 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist4;
-                    top_labels[left] = i + 4;
-                }
-            }
-
-            if (dist5 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist5 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist5;
-                    top_labels[left] = i + 5;
-                }
-            }
-
-            if (dist6 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist6 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist6;
-                    top_labels[left] = i + 6;
-                }
-            }
-
-            if (dist7 > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist7 > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist7;
-                    top_labels[left] = i + 7;
-                }
-            }
+            insert_into_top_k(dist0, i, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist1, i + 1, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist2, i + 2, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist3, i + 3, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist4, i + 4, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist5, i + 5, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist6, i + 6, top_distances.data(), top_labels.data(), k);
+            insert_into_top_k(dist7, i + 7, top_distances.data(), top_labels.data(), k);
 
             vec += 8 * d;
             i += 8;
@@ -297,25 +161,7 @@ void IndexFlatIP::search_single(const float* query, size_t k, float* distances, 
 
         for (; i < ntotal; ++i) {
             float dist = distance::compute_ip_distance(query, vec, d);
-
-            if (dist > top_distances[k-1]) {
-                size_t left = 0, right = k;
-                while (left < right) {
-                    size_t mid = (left + right) / 2;
-                    if (dist > top_distances[mid]) {
-                        right = mid;
-                    } else {
-                        left = mid + 1;
-                    }
-                }
-
-                if (left < k) {
-                    std::memmove(&top_distances[left + 1], &top_distances[left], (k - left - 1) * sizeof(float));
-                    std::memmove(&top_labels[left + 1], &top_labels[left], (k - left - 1) * sizeof(size_t));
-                    top_distances[left] = dist;
-                    top_labels[left] = i;
-                }
-            }
+            insert_into_top_k(dist, i, top_distances.data(), top_labels.data(), k);
             vec += d;
         }
     }
@@ -378,13 +224,8 @@ void IndexFlatIP::search_parallel(const float* query, size_t k, float* distances
             __builtin_prefetch(query + 128, 0, 0);
             __builtin_prefetch(query + 192, 0, 0);
 
-            float top_distances[1024];
-            size_t top_labels[1024];
-
-            for (size_t i = 0; i < k; ++i) {
-                top_distances[i] = -std::numeric_limits<float>::max();
-                top_labels[i] = 0;
-            }
+            std::vector<float> top_distances(k, -std::numeric_limits<float>::max());
+            std::vector<size_t> top_labels(k, 0);
 
             const float* vec = data() + start * d;
             for (size_t i = start; i < end; ++i) {
@@ -509,6 +350,35 @@ void IndexFlatIP::search(size_t n, const float* x, size_t k, float* distances, s
             search_single(query, k, dist_ptr, label_ptr);
         }
     }
+}
+
+void IndexFlatIP::save_to_file(const std::string& path) const {
+    auto bytes = save_to_bytes();
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Failed to open file for writing: " + path);
+    }
+    file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    if (!file) {
+        throw std::runtime_error("Failed to write to file: " + path);
+    }
+}
+
+void IndexFlatIP::load_from_file(const std::string& path) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        throw std::runtime_error("Failed to open file for reading: " + path);
+    }
+    size_t file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    std::vector<uint8_t> bytes(file_size);
+    file.read(reinterpret_cast<char*>(bytes.data()), file_size);
+    if (!file) {
+        throw std::runtime_error("Failed to read from file: " + path);
+    }
+    
+    load_from_bytes(bytes.data(), bytes.size());
 }
 
 } // namespace algorithms

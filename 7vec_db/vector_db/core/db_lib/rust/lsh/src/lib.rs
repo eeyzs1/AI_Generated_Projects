@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 
@@ -39,8 +39,8 @@ impl IndexLSH {
             return Ok(());
         }
 
-        let dim = self.storage.dimension;
-        let old_total = self.storage.size;
+        let dim = self.storage.dimension();
+        let old_total = self.storage.size();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
@@ -59,10 +59,10 @@ impl IndexLSH {
         Ok(())
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
-        let dim = self.storage.dimension;
-        let mut all_labels = Vec::with_capacity(x.len());
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
+        let dim = self.storage.dimension();
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
             let mut candidates = HashSet::new();
@@ -77,39 +77,39 @@ impl IndexLSH {
 
             let mut results = Vec::with_capacity(candidates.len());
             for idx in candidates {
-                let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+                let vec = self.storage.get_vector(idx);
                 let dist = distance::compute_l2_distance(&query, vec);
                 results.push((dist, idx as i64));
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            results.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -125,7 +125,7 @@ impl IndexLSH {
 
 impl IndexLSH {
     fn generate_hash_functions(&mut self) {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         self.hash_functions = Vec::with_capacity(self.num_hash_tables);
         let mut rng = rand::thread_rng();
 
@@ -144,7 +144,7 @@ impl IndexLSH {
     }
 
     fn hash_vector(&self, vec: &[f32], table_idx: usize) -> usize {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let mut hash = 0;
         for h in 0..self.num_hash_functions {
             let mut dot = 0.0f32;

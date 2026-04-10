@@ -4,7 +4,7 @@
 #   - 一个中心化 Nacos（所有区域共享）
 #   - 区域A：user-service, group-service, message-service
 #   - 区域B：connector-service, push-service, storage-service
-#   - 共享中间件：MySQL, Redis, Kafka
+#   - 共享中间件：MySQL, Redis, Kafka, Elasticsearch
 #
 # 使用方式：
 #   docker-compose -f docker-compose.multi-region.yml up -d
@@ -113,6 +113,10 @@ services:
       SERVICE_PORT: "8001"
       SECRET_KEY: "your-secret-key-change-in-production"
       ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CDN_BASE_URL: ""
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     restart: on-failure
 
   group-service-region-a:
@@ -133,6 +137,7 @@ services:
       SERVICE_PORT: "8002"
       SECRET_KEY: "your-secret-key-change-in-production"
       ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     restart: on-failure
 
   message-service-region-a:
@@ -180,6 +185,10 @@ services:
       SERVICE_PORT: "8001"
       SECRET_KEY: "your-secret-key-change-in-production"
       ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CDN_BASE_URL: ""
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     restart: on-failure
 
   connector-service-region-b:
@@ -224,6 +233,8 @@ services:
       NACOS_PORT: "8848"
       SERVICE_HOST: push-service-region-b
       SERVICE_PORT: "8005"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
     restart: on-failure
 
   storage-service-region-b:
@@ -241,8 +252,113 @@ services:
       SERVICE_PORT: "8006"
       SECRET_KEY: "your-secret-key-change-in-production"
       ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      CDN_BASE_URL: ""
     volumes:
       - storage_data:/app/static/avatars/uploads
+    restart: on-failure
+
+  search-service:
+    build: ./services/search-service
+    container_name: im-search-service
+    ports:
+      - "8007:8007"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      NACOS_HOST: nacos
+      NACOS_PORT: "8848"
+      SERVICE_HOST: search-service
+      SERVICE_PORT: "8007"
+      SECRET_KEY: "your-secret-key-change-in-production"
+      ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    restart: on-failure
+
+  elasticsearch:
+    image: elasticsearch:8.17.0
+    container_name: im-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  celery-worker-emails:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-worker-emails
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    command: celery -A services.common.celery_app worker -Q emails --loglevel=info -c 4
+    restart: on-failure
+
+  celery-worker-default:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-worker-default
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_user
+      SCYLLA_HOSTS: scylladb
+      SCYLLA_PORT: "9042"
+      SCYLLA_KEYSPACE: im_message
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    command: celery -A services.common.celery_app worker -Q default,search,maintenance --loglevel=info -c 2
+    restart: on-failure
+
+  celery-beat:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-beat
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_user
+    command: celery -A services.common.celery_app beat --loglevel=info
+    restart: on-failure
+
+  celery-flower:
+    image: mher/flower:2.0
+    container_name: im-celery-flower
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - FLOWER_PORT=5555
     restart: on-failure
 
   # ── 网关 ─────────────────────────────────────────────────────
@@ -270,3 +386,4 @@ services:
 volumes:
   mysql_data:
   storage_data:
+  es_data:

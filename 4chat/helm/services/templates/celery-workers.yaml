@@ -1,0 +1,157 @@
+{{- if .Values.celeryWorkerEmails.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker-emails
+  labels:
+    app: celery-worker-emails
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: celery-worker-emails
+  replicas: {{ .Values.celeryWorkerEmails.replicas }}
+  template:
+    metadata:
+      labels:
+        app: celery-worker-emails
+    spec:
+      containers:
+        - name: celery-worker-emails
+          image: {{ include "services.image" (list . .Values.celeryWorkerEmails.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
+            - name: SMTP_SERVER
+              value: {{ .Values.userService.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.userService.smtp.port | quote }}
+            - name: SMTP_USER
+              value: {{ .Values.userService.smtp.user | quote }}
+            - name: SMTP_PASSWORD
+              value: {{ .Values.userService.smtp.password | quote }}
+          command: ["celery", "-A", "services.common.celery_app", "worker", "-Q", "emails", "--loglevel=info", "-c", {{ .Values.celeryWorkerEmails.concurrency | quote }}]
+---
+{{- end }}
+{{- if .Values.celeryWorkerDefault.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker-default
+  labels:
+    app: celery-worker-default
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: celery-worker-default
+  replicas: {{ .Values.celeryWorkerDefault.replicas }}
+  template:
+    metadata:
+      labels:
+        app: celery-worker-default
+    spec:
+      containers:
+        - name: celery-worker-default
+          image: {{ include "services.image" (list . .Values.celeryWorkerDefault.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
+            - name: DATABASE_URL
+              value: mysql+pymysql://root:{{ .Values.global.mysql.password }}@{{ .Values.global.mysql.host }}:{{ .Values.global.mysql.port }}/im_user
+            - name: SCYLLA_HOSTS
+              value: {{ .Values.global.scylla.host }}
+            - name: SCYLLA_PORT
+              value: {{ .Values.global.scylla.port | quote }}
+            - name: SCYLLA_KEYSPACE
+              value: im_message
+            - name: ELASTICSEARCH_HOSTS
+              value: {{ .Values.global.elasticsearch.hosts }}
+            - name: AVATAR_UPLOAD_DIR
+              value: /app/static/avatars
+          command: ["celery", "-A", "services.common.celery_app", "worker", "-Q", "default,search,maintenance", "--loglevel=info", "-c", {{ .Values.celeryWorkerDefault.concurrency | quote }}]
+---
+{{- end }}
+{{- if .Values.celeryBeat.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  labels:
+    app: celery-beat
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: celery-beat
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+        - name: celery-beat
+          image: {{ include "services.image" (list . .Values.celeryBeat.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
+            - name: DATABASE_URL
+              value: mysql+pymysql://root:{{ .Values.global.mysql.password }}@{{ .Values.global.mysql.host }}:{{ .Values.global.mysql.port }}/im_user
+          command: ["celery", "-A", "services.common.celery_app", "beat", "--loglevel=info"]
+---
+{{- end }}
+{{- if .Values.celeryFlower.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-flower
+  labels:
+    app: celery-flower
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: celery-flower
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: celery-flower
+    spec:
+      containers:
+        - name: celery-flower
+          image: {{ .Values.celeryFlower.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: FLOWER_PORT
+              value: "5555"
+          ports:
+            - containerPort: 5555
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: celery-flower
+  labels:
+    app: celery-flower
+    {{- include "services.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: celery-flower
+  type: NodePort
+  ports:
+    - port: 5555
+      nodePort: {{ .Values.celeryFlower.nodePort }}
+{{- end }}

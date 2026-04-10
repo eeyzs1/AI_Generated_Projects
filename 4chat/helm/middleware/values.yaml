@@ -27,3 +27,9 @@ scylladb:
   storage: 5Gi
   smp: "1"
   memory: 512M
+
+elasticsearch:
+  enabled: true
+  image: elasticsearch:8.17.0
+  storage: 5Gi
+  javaOpts: "-Xms512m -Xmx512m"

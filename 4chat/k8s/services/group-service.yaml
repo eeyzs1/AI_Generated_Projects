@@ -35,6 +35,8 @@ spec:
               value: "your-secret-key-change-in-production"
             - name: ACCESS_SECRET_KEY
               value: "your-secret-key-change-in-production"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
           readinessProbe:
             httpGet:
               path: /health

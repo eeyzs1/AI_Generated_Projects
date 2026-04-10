@@ -15,6 +15,7 @@ from services.chat_service import (
 )
 from auth import get_current_user_id
 from nacos_client import register_service, get_service_url
+from kafka_producer import publish
 
 Base.metadata.create_all(bind=engine)
 
@@ -55,6 +56,13 @@ async def fetch_members(member_ids: List[int]) -> List[MemberInfo]:
 async def create_new_room(room: RoomCreate, request: Request, db: Session = Depends(get_db)):
     user_id = await get_current_user_id(request)
     db_room = create_room(db, room, user_id)
+    await publish("room_updated", {
+        "type": "room_updated",
+        "room_id": db_room.id,
+        "name": db_room.name,
+        "creator_id": db_room.creator_id,
+        "created_at": db_room.created_at.isoformat()
+    })
     db_room.members = await fetch_members([user_id])
     return db_room
 

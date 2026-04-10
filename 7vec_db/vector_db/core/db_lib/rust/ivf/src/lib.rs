@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use rand::Rng;
 use std::collections::HashSet;
 
@@ -35,7 +35,7 @@ impl IndexIVF {
             ));
         }
 
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         self.centroids.resize(self.nlist * dim, 0.0);
 
         let mut rng = rand::thread_rng();
@@ -85,6 +85,22 @@ impl IndexIVF {
                             max_shift = shift;
                         }
                     }
+                } else {
+                    let mut largest_i = 0;
+                    let mut largest_count = 0usize;
+                    for ii in 0..self.nlist {
+                        if counts[ii] > largest_count {
+                            largest_count = counts[ii];
+                            largest_i = ii;
+                        }
+                    }
+                    if largest_count > 1 {
+                        let mut rng = rand::thread_rng();
+                        let perturbation: f32 = rng.gen_range(0.01..0.1);
+                        for j in 0..dim {
+                            self.centroids[i * dim + j] = self.centroids[largest_i * dim + j] + perturbation;
+                        }
+                    }
                 }
             }
 
@@ -102,8 +118,8 @@ impl IndexIVF {
             return Ok(());
         }
 
-        let dim = self.storage.dimension;
-        let old_total = self.storage.size;
+        let dim = self.storage.dimension();
+        let old_total = self.storage.size();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
@@ -125,14 +141,14 @@ impl IndexIVF {
         self.nprobe = nprobe;
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
         if self.centroids.is_empty() {
             return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Index not trained"));
         }
 
-        let dim = self.storage.dimension;
-        let mut all_labels = Vec::with_capacity(x.len());
+        let dim = self.storage.dimension();
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
             let mut cluster_distances = Vec::with_capacity(self.nlist);
@@ -141,7 +157,7 @@ impl IndexIVF {
                 let dist = distance::compute_l2_distance(&query, centroid);
                 cluster_distances.push((dist, i));
             }
-            cluster_distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            cluster_distances.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let nprobe = std::cmp::min(self.nprobe, self.nlist);
             let mut candidates = HashSet::new();
@@ -153,39 +169,39 @@ impl IndexIVF {
 
             let mut results = Vec::with_capacity(candidates.len());
             for idx in candidates {
-                let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+                let vec = self.storage.get_vector(idx);
                 let dist = distance::compute_l2_distance(&query, vec);
                 results.push((dist, idx as i64));
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            results.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -201,7 +217,7 @@ impl IndexIVF {
 
 impl IndexIVF {
     fn assign_to_cluster(&self, vec: &[f32]) -> usize {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let mut best_cluster = 0;
         let mut best_dist = f32::MAX;
 
