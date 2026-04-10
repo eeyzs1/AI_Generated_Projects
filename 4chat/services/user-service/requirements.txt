@@ -10,3 +10,5 @@ python-dotenv
 redis
 nacos-sdk-python
 python-multipart
+aiokafka
+celery[redis]>=5.4.0

@@ -41,6 +41,8 @@ spec:
               value: "your-secret-key-change-in-production"
             - name: ACCESS_SECRET_KEY
               value: "your-secret-key-change-in-production"
+            - name: CDN_BASE_URL
+              value: ""
           volumeMounts:
             - name: avatars
               mountPath: /app/static/avatars/uploads

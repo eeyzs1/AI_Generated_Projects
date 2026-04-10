@@ -1,10 +1,9 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use rand::Rng;
 use std::collections::HashSet;
 
-#[pyclass]
 struct AnnoyNode {
     index: usize,
     hyperplane_normal: Vec<f32>,
@@ -30,6 +29,7 @@ struct IndexAnnoy {
     storage: VectorStorage,
     n_trees: usize,
     trees: Vec<Option<Box<AnnoyNode>>>,
+    built: bool,
 }
 
 #[pymethods]
@@ -41,6 +41,7 @@ impl IndexAnnoy {
             storage: VectorStorage::new(dimension),
             n_trees,
             trees: Vec::new(),
+            built: false,
         }
     }
 
@@ -50,28 +51,46 @@ impl IndexAnnoy {
             return Ok(());
         }
 
-        let dim = self.storage.dimension;
-        let old_total = self.storage.size;
+        let dim = self.storage.dimension();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
         }
         self.storage.add(n, &flat_data);
+        self.built = false;
 
-        let indices: Vec<usize> = (old_total..self.storage.size).collect();
+        Ok(())
+    }
+
+    fn build(&mut self) -> PyResult<()> {
+        if self.storage.size() == 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "No vectors added yet",
+            ));
+        }
+
+        let dim = self.storage.dimension();
+        let indices: Vec<usize> = (0..self.storage.size()).collect();
         self.trees.clear();
         self.trees.reserve(self.n_trees);
         for _ in 0..self.n_trees {
             self.trees.push(Self::build_tree_static(&indices, dim, &self.storage));
         }
+        self.built = true;
 
         Ok(())
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
-        let dim = self.storage.dimension;
-        let mut all_labels = Vec::with_capacity(x.len());
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
+        if !self.built {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Index not built. Call build() after adding vectors.",
+            ));
+        }
+
+        let dim = self.storage.dimension();
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
             let mut candidates = HashSet::new();
@@ -83,39 +102,39 @@ impl IndexAnnoy {
 
             let mut results = Vec::with_capacity(candidates.len());
             for idx in candidates {
-                let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+                let vec = self.storage.get_vector(idx);
                 let dist = distance::compute_l2_distance(&query, vec);
                 results.push((dist, idx as i64));
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            results.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -142,8 +161,8 @@ impl IndexAnnoy {
             i2 = rng.gen_range(0..indices.len());
         }
 
-        let v1 = &storage.vectors[indices[i1] * dim..(indices[i1] + 1) * dim];
-        let v2 = &storage.vectors[indices[i2] * dim..(indices[i2] + 1) * dim];
+        let v1 = storage.get_vector(indices[i1]);
+        let v2 = storage.get_vector(indices[i2]);
 
         node.hyperplane_normal = vec![0.0f32; dim];
         for j in 0..dim {
@@ -170,7 +189,7 @@ impl IndexAnnoy {
         let mut left_indices = Vec::new();
         let mut right_indices = Vec::new();
         for &idx in indices {
-            let v = &storage.vectors[idx * dim..(idx + 1) * dim];
+            let v = storage.get_vector(idx);
             let mut dot = 0.0;
             for j in 0..dim {
                 dot += node.hyperplane_normal[j] * v[j];
@@ -199,7 +218,7 @@ impl IndexAnnoy {
     }
 
     fn get_candidates(&self, query: &[f32], node: &AnnoyNode, candidates: &mut HashSet<usize>) {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
 
         if node.left.is_none() && node.right.is_none() {
             candidates.insert(node.index);

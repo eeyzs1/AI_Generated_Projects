@@ -39,6 +39,8 @@ spec:
               value: {{ .Values.global.secretKey | quote }}
             - name: ACCESS_SECRET_KEY
               value: {{ .Values.global.secretKey | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.global.kafka.bootstrapServers }}
           readinessProbe:
             httpGet:
               path: /health

@@ -1,10 +1,10 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use rand::Rng;
 use std::collections::{BinaryHeap, HashSet};
 use std::cmp::Reverse;
-use ordered_float::NotNan;
+use ordered_float::OrderedFloat;
 
 #[pyclass]
 struct HNSWNode {
@@ -53,8 +53,8 @@ impl IndexHNSW {
             return Ok(());
         }
 
-        let dim = self.storage.dimension;
-        let old_total = self.storage.size;
+        let dim = self.storage.dimension();
+        let old_total = self.storage.size();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
@@ -75,14 +75,14 @@ impl IndexHNSW {
         self.ef_search = ef;
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
-        let dim = self.storage.dimension;
-        let mut all_labels = Vec::with_capacity(x.len());
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
+        let dim = self.storage.dimension();
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
             let mut candidates = Vec::new();
-            if self.storage.size > 0 {
+            if self.storage.size() > 0 {
                 candidates.push(self.enter_point);
 
                 for l in (1..=self.max_level).rev() {
@@ -93,39 +93,39 @@ impl IndexHNSW {
 
             let mut results = Vec::with_capacity(candidates.len());
             for idx in candidates {
-                let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+                let vec = self.storage.get_vector(idx);
                 let dist = distance::compute_l2_distance(&query, vec);
                 results.push((dist, idx as i64));
             }
-            results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            results.sort_by(|a, b| a.0.total_cmp(&b.0));
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -152,21 +152,21 @@ impl IndexHNSW {
     }
 
     fn search_layer(&self, query: &[f32], candidates: &mut Vec<usize>, level: usize, ef: usize) {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let mut candidates_set = BinaryHeap::new();
         let mut visited = HashSet::new();
 
         for &idx in candidates.iter() {
-            let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+            let vec = self.storage.get_vector(idx);
             let dist = distance::compute_l2_distance(query, vec);
-            candidates_set.push(Reverse((NotNan::new(dist).unwrap(), idx)));
+            candidates_set.push(Reverse((OrderedFloat(dist), idx)));
             visited.insert(idx);
         }
 
         candidates.clear();
         while let Some(Reverse((dist_c, c))) = candidates_set.pop() {
             let (dist_f, _f) = if candidates_set.is_empty() {
-                (NotNan::new(f32::MAX).unwrap(), 0)
+                (OrderedFloat(f32::MAX), 0)
             } else {
                 let &Reverse((d, f_idx)) = candidates_set.peek().unwrap();
                 (d, f_idx)
@@ -179,11 +179,11 @@ impl IndexHNSW {
             for &neighbor in self.nodes[c].neighbors[level].iter() {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
-                    let vec = &self.storage.vectors[neighbor * dim..(neighbor + 1) * dim];
+                    let vec = self.storage.get_vector(neighbor);
                     let dist = distance::compute_l2_distance(query, vec);
 
                     if candidates_set.len() < ef || dist < *dist_f {
-                        candidates_set.push(Reverse((NotNan::new(dist).unwrap(), neighbor)));
+                        candidates_set.push(Reverse((OrderedFloat(dist), neighbor)));
                     }
                 }
             }
@@ -200,14 +200,14 @@ impl IndexHNSW {
     }
 
     fn select_neighbors(&self, query: &[f32], candidates: &[usize], level: usize) -> Vec<usize> {
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let mut dists = Vec::with_capacity(candidates.len());
         for &idx in candidates {
-            let vec = &self.storage.vectors[idx * dim..(idx + 1) * dim];
+            let vec = self.storage.get_vector(idx);
             let dist = distance::compute_l2_distance(query, vec);
             dists.push((dist, idx));
         }
-        dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        dists.sort_by(|a, b| a.0.total_cmp(&b.0));
 
         let M_max = if level == 0 { 2 * self.M } else { self.M };
         let take = std::cmp::min(M_max, dists.len());
@@ -221,7 +221,7 @@ impl IndexHNSW {
         self.nodes.push(HNSWNode::new(max_level));
 
         let mut entry_points = Vec::new();
-        if self.storage.size > 1 {
+        if self.storage.size() > 1 {
             entry_points.push(self.enter_point);
             for l in (new_level + 1..=self.max_level).rev() {
                 self.search_layer(vec, &mut entry_points, l, 1);
@@ -236,7 +236,7 @@ impl IndexHNSW {
             }
         }
 
-        if new_level > self.max_level || self.storage.size == 1 {
+        if new_level > self.max_level || self.storage.size() == 1 {
             self.enter_point = idx;
             self.max_level = std::cmp::max(self.max_level, new_level);
         }

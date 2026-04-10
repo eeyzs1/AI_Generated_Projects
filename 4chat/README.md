@@ -16,6 +16,9 @@
 - [方案三：Kubernetes 本地 minikube](#方案三kubernetes-本地-minikube)
 - [方案三B：Kubernetes Helm 部署](#方案三bkubernetes-helm-部署)
 - [方案四：Kubernetes 云服务中间件](#方案四kubernetes-云服务中间件)
+- [Elasticsearch 集成方案](#elasticsearch-集成方案)
+- [CDN 集成方案](#cdn-集成方案)
+- [Celery 集成方案](#celery-集成方案)
 - [使用说明](#使用说明)
 - [常见问题](#常见问题)
 
@@ -27,7 +30,9 @@
 - 好友申请与管理
 - 创建聊天室、邀请好友加入
 - 实时消息收发（WebSocket）
+- 消息全文搜索（Elasticsearch）
 - 头像上传与默认头像选择
+- 静态资源与文件 CDN 加速
 - 离线消息邮件通知
 
 ---
@@ -40,13 +45,17 @@
 浏览器
   │
   ▼
+CDN (cdn.4chat.example.com)  ── 静态资源 / 头像 / 文件加速
+  │
+  ▼
 APISIX 网关 (localhost:8080)
   │
   ├── /api/user/*     → user-service      用户、登录、好友
   ├── /api/group/*    → group-service     聊天室、邀请
   ├── /api/message/*  → message-service   消息存储（ScyllaDB）
+  ├── /api/search/*   → search-service    全文搜索（Elasticsearch）
   ├── /ws/*           → connector-service WebSocket 实时连接
-  └── /api/storage/*  → storage-service   头像文件
+  └── /api/storage/*  → storage-service   头像文件（CDN 回源）
 ```
 
 **中间件：**
@@ -55,9 +64,12 @@ APISIX 网关 (localhost:8080)
 |------|------|
 | MySQL | 持久化存储用户、群组数据 |
 | ScyllaDB | 消息存储（时序数据，高吞吐） |
+| Elasticsearch | 消息全文搜索、用户模糊搜索、房间搜索 |
 | Redis | 在线状态缓存、用户信息缓存 |
 | Kafka | 服务间异步消息传递 |
+| Celery | 异步任务队列（邮件、定时任务、ES 重建索引等） |
 | Nacos | 服务注册与发现 |
+| CDN | 静态资源、头像、文件分发加速 |
 
 ---
 
@@ -160,6 +172,70 @@ storage-service
   │
   ▼
 返回文件 URL: /api/storage/static/avatars/uploads/{filename}
+  │
+  ▼
+CDN 回源缓存: cdn.4chat.example.com/static/avatars/uploads/{filename}
+```
+
+---
+
+### 5. 消息全文搜索（Elasticsearch）
+
+```
+浏览器
+  │ GET /api/search/messages?q=关键词&room_id=可选
+  ▼
+APISIX 网关
+  │ 转发
+  ▼
+search-service
+  │ 验证 JWT
+  │ 查询 Elasticsearch
+  └──▶ Elasticsearch (im_messages 索引)
+         │ 全文检索 content 字段（ik 分词器）
+         │ 可选按 room_id 过滤
+         │ 按相关度 + 时间排序
+  │
+  ▼
+返回搜索结果（含高亮片段）
+
+数据同步流程：
+  message-service 保存消息到 ScyllaDB
+    → 发布 msg_sent 到 Kafka
+    → search-service 消费 msg_sent
+    → 写入 Elasticsearch (im_messages 索引)
+
+  user-service 用户注册/更新
+    → 发布 user_updated 到 Kafka
+    → search-service 消费 user_updated
+    → 写入 Elasticsearch (im_users 索引)
+
+  group-service 房间创建/更新
+    → 发布 room_updated 到 Kafka
+    → search-service 消费 room_updated
+    → 写入 Elasticsearch (im_rooms 索引)
+```
+
+---
+
+### 6. CDN 加速流程
+
+```
+静态资源访问（前端 JS/CSS/HTML）：
+  浏览器 → CDN 边缘节点
+    │ 命中缓存 → 直接返回
+    │ 未命中   → 回源到前端 Nginx → 缓存并返回
+
+头像/文件访问：
+  浏览器 → CDN (cdn.4chat.example.com/static/avatars/...)
+    │ 命中缓存 → 直接返回（默认头像缓存1天，上传头像缓存1小时）
+    │ 未命中   → 回源到 storage-service → 缓存并返回
+
+头像上传：
+  浏览器 → APISIX → storage-service
+    │ 保存到本地磁盘
+    │ 返回 CDN URL: https://cdn.4chat.example.com/static/avatars/uploads/{filename}
+    │ CDN 首次访问时回源拉取并缓存
 ```
 
 ---
@@ -221,11 +297,17 @@ Pod 通过 Service DNS 名互访：
 | 用户信息 | MySQL (im_user) | 持久化 |
 | 群组/房间 | MySQL (im_group) | 持久化 |
 | 消息记录 | ScyllaDB (im_message) | 持久化，时序优化 |
-| 头像文件 | 本地磁盘 / PV | 持久化 |
+| 消息搜索索引 | Elasticsearch (im_messages) | 全文搜索，ik 分词 |
+| 用户搜索索引 | Elasticsearch (im_users) | 模糊搜索，前缀匹配 |
+| 房间搜索索引 | Elasticsearch (im_rooms) | 名称搜索 |
+| 头像文件 | 本地磁盘 / PV | 持久化，CDN 加速分发 |
+| 前端静态资源 | Nginx / CDN | CDN 加速分发 |
 | 用户缓存 | Redis `user:{id}` | TTL 5分钟，加速查询 |
 | 在线状态 | Redis `online_users` | Set，实时更新 |
 | 消息事件 | Kafka `msg_sent` | 异步，消费后丢弃 |
-| 消息记录 | ScyllaDB `im_message` | 时序存储，partition by room_id |
+| 搜索同步事件 | Kafka `user_updated` / `room_updated` | 异步同步到 ES |
+| Celery 任务状态 | Redis `celery-task-meta-*` | Celery 结果后端 |
+| Celery 定时调度 | Redis `celery-beat` | Celery Beat 调度器 |
 | 服务注册 | Nacos | 内存+持久化，服务发现 |
 | JWT token | 浏览器 localStorage | 客户端持有 |
 | Refresh token | MySQL + Cookie | 服务端验证 |
@@ -326,6 +408,22 @@ services/storage-service/
 └── static/avatars/default/       # 内置默认头像文件
 ```
 
+### search-service（端口 8007）
+
+```
+services/search-service/
+├── main.py                       # 路由入口：消息搜索、用户搜索、房间搜索
+├── database.py                   # Elasticsearch 连接，自动初始化索引和映射
+├── auth.py                       # JWT 验证中间件
+├── nacos_client.py               # Nacos 服务注册与发现
+├── ha_database.py                # 高可用数据库工具
+├── schemas/
+│   └── search.py                 # Pydantic 模型：搜索请求、搜索结果、高亮片段
+└── services/
+    ├── search_service.py         # 搜索逻辑：构建 ES 查询、结果解析、高亮处理
+    └── kafka_consumer.py         # 消费 msg_sent / user_updated / room_updated 同步到 ES
+```
+
 ### services/common/（公共工具）
 
 ```
@@ -345,13 +443,14 @@ services/common/
 │   ├── message-service/   # 消息收发       (端口 8003)
 │   ├── connector-service/ # WebSocket     (端口 8004)
 │   ├── push-service/      # 离线推送       (端口 8005)
-│   └── storage-service/   # 文件存储       (端口 8006)
+│   ├── storage-service/   # 文件存储       (端口 8006)
+│   └── search-service/    # 全文搜索       (端口 8007)
 ├── gateway/
 │   ├── apisix.yaml        # 路由配置
 │   └── config.yaml        # APISIX 配置
 ├── k8s/
-│   ├── middleware/        # MySQL/Redis/Kafka/Nacos K8s 配置
-│   ├── services/          # 6个微服务 + 前端 K8s 配置
+│   ├── middleware/        # MySQL/Redis/Kafka/Nacos/ScyllaDB/ES K8s 配置
+│   ├── services/          # 7个微服务 + 前端 K8s 配置
 │   ├── gateway/           # APISIX K8s 配置
 │   ├── overlays/cloud/    # Kustomize 云服务中间件 overlay
 │   ├── deploy.sh          # kubectl 一键部署脚本
@@ -618,6 +717,8 @@ kubectl apply -k k8s/overlays/cloud/
 | Redis | 哨兵模式（默认）/ 集群模式 | 1主2从3哨兵 或 6节点集群 | 哨兵自动故障转移；集群支持横向扩展 |
 | Kafka | 多 Broker | 3个 Broker | 分区副本数3，最少2个同步 |
 | Nacos | 集群模式 | 3节点 | 共享 MySQL 存储 |
+| Elasticsearch | 集群模式 | 3节点（混合）或 5+节点（专用 master+data） | 2副本，ik 分词插件 |
+| Celery Worker | 多实例 | 2+ Worker 实例 | 按队列分流，可独立扩缩容 |
 
 ### Docker Compose 高可用启动
 
@@ -775,6 +876,1101 @@ istioctl --context=<集群B> proxy-status
 ### 发送消息
 
 在聊天室底部输入框输入内容，按 `Enter` 或点击发送按钮即可。消息会实时推送给房间内所有在线成员。
+
+---
+
+## Elasticsearch 集成方案
+
+### 设计目标
+
+为 IM 系统引入 Elasticsearch，实现消息全文搜索、用户模糊搜索、房间名称搜索能力。当前系统消息存储在 ScyllaDB 中，仅支持按 `room_id` 精确查询，无法进行跨房间内容检索；用户搜索依赖 MySQL `LIKE` 查询，性能和功能均有限。
+
+### 架构设计
+
+采用 **CQRS（命令查询职责分离）+ Kafka 异步同步** 模式：
+
+- **写路径**：消息仍写入 ScyllaDB（主存储），用户/房间仍写入 MySQL（主存储）
+- **读路径**：搜索请求走 Elasticsearch，常规消息查询仍走 ScyllaDB
+- **数据同步**：通过 Kafka 事件异步同步到 ES，保证最终一致性
+
+```
+写路径（不变）：
+  message-service → ScyllaDB（主存储）→ Kafka msg_sent
+  user-service    → MySQL（主存储）    → Kafka user_updated
+  group-service   → MySQL（主存储）    → Kafka room_updated
+
+同步路径（新增）：
+  search-service 消费 Kafka → 写入 Elasticsearch
+
+读路径（新增）：
+  前端 → APISIX → search-service → Elasticsearch
+```
+
+### Elasticsearch 索引设计
+
+#### im_messages 索引
+
+```json
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "ik_smart_analyzer": {
+          "type": "custom",
+          "tokenizer": "ik_smart"
+        },
+        "ik_max_word_analyzer": {
+          "type": "custom",
+          "tokenizer": "ik_max_word"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "message_id": { "type": "keyword" },
+      "room_id":    { "type": "integer" },
+      "sender_id":  { "type": "integer" },
+      "content":    {
+        "type": "text",
+        "analyzer": "ik_max_word_analyzer",
+        "search_analyzer": "ik_smart_analyzer",
+        "fields": {
+          "keyword": { "type": "keyword", "ignore_above": 256 }
+        }
+      },
+      "created_at": { "type": "date" }
+    }
+  }
+}
+```
+
+**设计说明：**
+- `content` 使用 `ik_max_word` 索引分词（最细粒度），`ik_smart` 搜索分词（智能切分），兼顾召回率和精确度
+- `room_id` 为 integer 类型，支持按房间过滤
+- `message_id` 为 keyword 类型，用于精确定位和去重
+- `created_at` 为 date 类型，支持时间范围过滤和排序
+
+#### im_users 索引
+
+```json
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "prefix_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "edge_ngram_filter"]
+        }
+      },
+      "filter": {
+        "edge_ngram_filter": {
+          "type": "edge_ngram",
+          "min_gram": 1,
+          "max_gram": 20
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "user_id":     { "type": "keyword" },
+      "username":    {
+        "type": "text",
+        "analyzer": "prefix_analyzer",
+        "search_analyzer": "standard",
+        "fields": {
+          "keyword": { "type": "keyword" }
+        }
+      },
+      "displayname": {
+        "type": "text",
+        "analyzer": "prefix_analyzer",
+        "search_analyzer": "standard",
+        "fields": {
+          "keyword": { "type": "keyword" }
+        }
+      },
+      "email":       { "type": "keyword" },
+      "avatar":      { "type": "keyword" },
+      "is_active":   { "type": "boolean" }
+    }
+  }
+}
+```
+
+**设计说明：**
+- `username` / `displayname` 使用 `edge_ngram` 分词器，支持前缀匹配（输入"张"即可匹配"张三"）
+- 同时保留 `keyword` 子字段，支持精确匹配和排序
+- `email` 为 keyword 类型，支持精确查找
+
+#### im_rooms 索引
+
+```json
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "room_id":    { "type": "keyword" },
+      "name":       {
+        "type": "text",
+        "analyzer": "ik_max_word",
+        "search_analyzer": "ik_smart"
+      },
+      "creator_id": { "type": "integer" },
+      "created_at": { "type": "date" }
+    }
+  }
+}
+```
+
+### 数据同步策略
+
+#### 消息同步（复用现有 Kafka topic）
+
+search-service 作为新的消费者组消费 `msg_sent` topic：
+
+```python
+# search-service/services/kafka_consumer.py
+async def consume_messages():
+    consumer = AIOKafkaConsumer(
+        "msg_sent",
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id="search-service"
+    )
+    async for msg in consumer:
+        data = msg.value
+        await es.index(
+            index="im_messages",
+            id=data["message_id"],
+            body={
+                "message_id": data["message_id"],
+                "room_id": data["room_id"],
+                "sender_id": data["sender_id"],
+                "content": data["content"],
+                "created_at": data["created_at"]
+            }
+        )
+```
+
+**优势：** 复用现有 `msg_sent` topic，无需修改 message-service 代码。Kafka 消费者组隔离，不影响 connector-service 和 push-service。
+
+#### 用户同步（新增 Kafka topic）
+
+user-service 在用户注册和更新时发布 `user_updated` 事件：
+
+```python
+# user-service/main.py 新增发布逻辑
+@app.post("/api/user/register")
+async def register(user: UserCreate, db: Session = Depends(get_db)):
+    # ... 原有注册逻辑 ...
+    await publish("user_updated", {
+        "type": "user_updated",
+        "user_id": new_user.id,
+        "username": new_user.username,
+        "displayname": new_user.displayname,
+        "email": new_user.email,
+        "avatar": new_user.avatar,
+        "is_active": new_user.is_active
+    })
+
+@app.put("/api/user/me")
+async def update_profile(user_update: UserUpdate, ...):
+    # ... 原有更新逻辑 ...
+    await publish("user_updated", {
+        "type": "user_updated",
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "displayname": current_user.displayname,
+        "email": current_user.email,
+        "avatar": current_user.avatar,
+        "is_active": current_user.is_active
+    })
+```
+
+#### 房间同步（新增 Kafka topic）
+
+group-service 在房间创建和更新时发布 `room_updated` 事件：
+
+```python
+# group-service/main.py 新增发布逻辑
+@app.post("/api/group/rooms")
+async def create_room(room: RoomCreate, ...):
+    # ... 原有创建逻辑 ...
+    await publish("room_updated", {
+        "type": "room_updated",
+        "room_id": new_room.id,
+        "name": new_room.name,
+        "creator_id": new_room.creator_id,
+        "created_at": new_room.created_at.isoformat()
+    })
+```
+
+### 搜索 API 设计
+
+#### 消息搜索
+
+```
+GET /api/search/messages?q=关键词&room_id=可选&from=0&size=20
+```
+
+**请求参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| q | string | 是 | 搜索关键词 |
+| room_id | int | 否 | 限定房间范围 |
+| from | int | 否 | 分页偏移，默认 0 |
+| size | int | 否 | 每页条数，默认 20，最大 100 |
+
+**响应示例：**
+
+```json
+{
+  "total": 42,
+  "from": 0,
+  "size": 20,
+  "results": [
+    {
+      "message_id": "uuid-xxx",
+      "room_id": 1,
+      "sender_id": 5,
+      "content": "今天<em>天气</em>真好",
+      "created_at": "2026-04-09T10:30:00Z",
+      "sender": {
+        "id": 5,
+        "username": "zhangsan",
+        "displayname": "张三",
+        "avatar": "https://cdn.4chat.example.com/static/avatars/uploads/xxx.png"
+      }
+    }
+  ]
+}
+```
+
+**ES 查询构建：**
+
+```python
+body = {
+    "query": {
+        "bool": {
+            "must": [
+                {
+                    "match": {
+                        "content": {
+                            "query": keyword,
+                            "analyzer": "ik_smart"
+                        }
+                    }
+                }
+            ],
+            "filter": []
+        }
+    },
+    "highlight": {
+        "pre_tags": ["<em>"],
+        "post_tags": ["</em>"],
+        "fields": {
+            "content": {}
+        }
+    },
+    "sort": [
+        "_score",
+        {"created_at": {"order": "desc"}}
+    ],
+    "from": from_offset,
+    "size": page_size
+}
+
+if room_id:
+    body["query"]["bool"]["filter"].append({"term": {"room_id": room_id}})
+```
+
+#### 用户搜索（增强）
+
+```
+GET /api/search/users?q=关键词&from=0&size=20
+```
+
+替代原有 `/api/user/search`，支持前缀匹配和模糊搜索。
+
+#### 房间搜索
+
+```
+GET /api/search/rooms?q=关键词&from=0&size=20
+```
+
+### search-service 依赖
+
+```
+search-service: Elasticsearch, Kafka, Nacos
+```
+
+### Docker Compose 配置
+
+在 `docker-compose.yml` 中新增：
+
+```yaml
+elasticsearch:
+  image: elasticsearch:8.17.0
+  container_name: im-elasticsearch
+  environment:
+    - discovery.type=single-node
+    - xpack.security.enabled=false
+    - ES_JAVA_OPTS=-Xms512m -Xmx512m
+  ports:
+    - "9200:9200"
+  volumes:
+    - es_data:/usr/share/elasticsearch/data
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+
+kibana:
+  image: kibana:8.17.0
+  container_name: im-kibana
+  depends_on:
+    elasticsearch:
+      condition: service_healthy
+  ports:
+    - "5601:5601"
+  environment:
+    - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+search-service:
+  build: ./services/search-service
+  container_name: im-search-service
+  ports:
+    - "8007:8007"
+  depends_on:
+    elasticsearch:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+    nacos:
+      condition: service_healthy
+  environment:
+    ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    NACOS_HOST: nacos
+    NACOS_PORT: "8848"
+    SERVICE_HOST: search-service
+    SERVICE_PORT: "8007"
+    SECRET_KEY: "your-secret-key-change-in-production"
+    ACCESS_SECRET_KEY: "your-secret-key-change-in-production"
+  restart: on-failure
+
+volumes:
+  es_data:
+```
+
+### APISIX 路由新增
+
+在 `gateway/apisix.yaml` 中新增：
+
+```yaml
+- id: search-service-route
+  uri: /api/search/*
+  upstream:
+    nodes:
+      "search-service:8007": 1
+  plugins:
+    cors:
+      allow_origins: "*"
+      allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+      allow_headers: "*"
+```
+
+### Elasticsearch 高可用部署
+
+| 场景 | 节点数 | 配置 |
+|------|--------|------|
+| 开发/测试 | 1 节点 | `discovery.type=single-node` |
+| 生产（小规模） | 3 节点 | 3 master+data 混合节点，2 副本 |
+| 生产（大规模） | 5+ 节点 | 3 专用 master + N data 节点，按需扩容 |
+
+**K8s 高可用 ES 部署：**
+
+```bash
+kubectl apply -f k8s/middleware/elasticsearch.yaml
+```
+
+**数据一致性保障：**
+
+1. **最终一致性**：Kafka 消费者保证 at-least-once 投递，ES 写入使用 `id` 字段去重
+2. **全量重建**：提供 `/api/search/reindex` 管理接口，从 ScyllaDB/MySQL 全量重建索引
+3. **监控告警**：通过 Kibana 监控索引健康状态和同步延迟
+
+---
+
+## CDN 集成方案
+
+### 设计目标
+
+为 IM 系统引入 CDN，加速静态资源、头像、文件的分发，降低源站压力，提升全球用户访问速度。当前所有文件由 storage-service 直接提供，随着用户量增长将面临带宽和延迟瓶颈。
+
+### 架构设计
+
+```
+用户请求
+  │
+  ▼
+CDN 边缘节点（就近响应）
+  │
+  ├── 缓存命中 → 直接返回（毫秒级）
+  │
+  └── 缓存未命中 → 回源
+        │
+        ▼
+      源站（Origin）
+        ├── 前端 Nginx     → 静态资源（JS/CSS/HTML）
+        └── storage-service → 头像/文件
+```
+
+### CDN 覆盖范围
+
+| 资源类型 | CDN 域名 | 源站路径 | 缓存策略 |
+|---------|---------|---------|---------|
+| 前端静态资源 | `app.4chat.example.com` | 前端 Nginx | 哈希文件1年，index.html 不缓存 |
+| 默认头像 | `cdn.4chat.example.com` | storage-service | 1天（不常变化） |
+| 用户上传头像 | `cdn.4chat.example.com` | storage-service | 1小时（可能更新） |
+| 聊天文件/图片 | `cdn.4chat.example.com` | storage-service | 7天（未来扩展） |
+
+### 缓存规则设计
+
+#### 前端静态资源
+
+```nginx
+# 前端 Nginx 添加缓存头
+location /static/ {
+    # 带哈希的静态文件（如 main.a1b2c3.js）
+    if ($uri ~* \.[a-f0-9]{8,}\.(js|css|png|jpg|svg|ico|woff2)$) {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+}
+
+location /index.html {
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    add_header Pragma "no-cache";
+}
+```
+
+#### 头像和文件
+
+```python
+# storage-service/main.py 修改响应头
+
+@app.get("/api/storage/static/avatars/default/{filename}")
+async def serve_default_avatar(filename: str):
+    # 默认头像：缓存1天
+    return FileResponse(
+        path=os.path.join(DEFAULT_DIR, filename),
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+@app.get("/api/storage/static/avatars/uploads/{filename}")
+async def serve_uploaded_avatar(filename: str):
+    # 上传头像：缓存1小时
+    return FileResponse(
+        path=os.path.join(UPLOAD_DIR, filename),
+        headers={"Cache-Control": "public, max-age=3600"}
+    )
+```
+
+### CDN 接入方式
+
+#### 方式一：云服务商 CDN（推荐生产使用）
+
+以阿里云 CDN 为例：
+
+1. **添加加速域名**：`cdn.4chat.example.com` 和 `app.4chat.example.com`
+2. **配置源站**：
+   - `cdn.4chat.example.com` → 源站 `origin.4chat.example.com`（指向 storage-service）
+   - `app.4chat.example.com` → 源站 `origin-app.4chat.example.com`（指向前端 Nginx）
+3. **配置缓存规则**（在 CDN 控制台）：
+   - `/static/avatars/default/*` → 缓存1天
+   - `/static/avatars/uploads/*` → 缓存1小时
+   - `/static/js/*`, `/static/css/*`, `/static/media/*` → 缓存1年
+   - `/index.html` → 不缓存
+4. **配置 HTTPS 证书**：上传 SSL 证书，开启 HTTPS
+5. **DNS 解析**：将 CDN 域名 CNAME 到云服务商分配的 CDN 域名
+
+**其他云服务商：**
+
+| 云服务商 | CDN 产品 | 对应服务 |
+|---------|---------|---------|
+| 阿里云 | CDN | OSS + CDN |
+| 腾讯云 | CDN | COS + CDN |
+| AWS | CloudFront | S3 + CloudFront |
+| 华为云 | CDN | OBS + CDN |
+
+#### 方式二：自建 Nginx 缓存层（适合开发/内网环境）
+
+在 APISIX 和 storage-service 之间增加 Nginx 缓存层：
+
+```nginx
+# cdn-proxy/nginx.conf
+proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=cdn_cache:100m
+                 max_size=10g inactive=7d use_temp_path=off;
+
+server {
+    listen 80;
+    server_name cdn.4chat.example.com;
+
+    location /static/avatars/default/ {
+        proxy_cache cdn_cache;
+        proxy_cache_valid 200 1d;
+        proxy_pass http://storage-service:8006;
+        add_header X-Cache-Status $upstream_cache_status;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
+    location /static/avatars/uploads/ {
+        proxy_cache cdn_cache;
+        proxy_cache_valid 200 1h;
+        proxy_pass http://storage-service:8006;
+        add_header X-Cache-Status $upstream_cache_status;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location /static/ {
+        proxy_cache cdn_cache;
+        proxy_cache_valid 200 7d;
+        proxy_pass http://storage-service:8006;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+}
+```
+
+**Docker Compose 配置：**
+
+```yaml
+cdn-proxy:
+  image: nginx:stable-alpine
+  container_name: im-cdn-proxy
+  ports:
+    - "8443:80"
+  volumes:
+    - ./cdn-proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    - cdn_cache:/var/cache/nginx
+  depends_on:
+    - storage-service
+  restart: on-failure
+
+volumes:
+  cdn_cache:
+```
+
+### 代码改造
+
+#### storage-service 返回 CDN URL
+
+```python
+# storage-service/main.py
+
+CDN_BASE_URL = os.environ.get("CDN_BASE_URL", "")
+
+@app.post("/api/storage/upload-avatar")
+async def upload_avatar(request: Request, file: UploadFile = File(...)):
+    await get_current_user_id(request)
+    ext = os.path.splitext(file.filename)[1] or ".png"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = os.path.join(UPLOAD_DIR, filename)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    if CDN_BASE_URL:
+        url = f"{CDN_BASE_URL}/static/avatars/uploads/{filename}"
+    else:
+        url = f"/api/storage/static/avatars/uploads/{filename}"
+
+    return {"url": url}
+```
+
+#### user-service 返回 CDN URL
+
+```python
+# user-service/main.py
+
+CDN_BASE_URL = os.environ.get("CDN_BASE_URL", "")
+
+def get_avatar_url(avatar_path: str) -> str:
+    if not avatar_path:
+        return avatar_path
+    if CDN_BASE_URL and avatar_path.startswith("/api/storage/static/"):
+        return avatar_path.replace("/api/storage/static/", f"{CDN_BASE_URL}/static/")
+    return avatar_path
+```
+
+#### 环境变量
+
+各服务新增环境变量：
+
+```bash
+CDN_BASE_URL=https://cdn.4chat.example.com   # 生产环境
+CDN_BASE_URL=http://localhost:8443             # 本地开发（自建缓存代理）
+CDN_BASE_URL=                                 # 不使用 CDN 时留空
+```
+
+### 头像更新与缓存失效
+
+当用户更新头像时，旧文件名已变更（UUID 文件名），无需主动刷新 CDN 缓存：
+
+1. 上传新头像 → 生成新 UUID 文件名 → 返回新 URL
+2. 旧 URL 自然过期（TTL 到期后 CDN 不再缓存）
+3. 用户信息更新 → Kafka `user_updated` 事件 → 前端刷新显示
+
+如果未来需要主动刷新缓存，可通过云服务商 API 或 CDN 缓存刷新接口实现。
+
+### CDN 监控指标
+
+| 指标 | 说明 | 告警阈值 |
+|------|------|---------|
+| 命中率 | 缓存命中次数 / 总请求次数 | < 80% |
+| 回源率 | 回源请求次数 / 总请求次数 | > 20% |
+| 回源延迟 | 回源请求平均响应时间 | > 500ms |
+| 流量带宽 | CDN 出流量 | 接近套餐上限 |
+| 5xx 错误率 | CDN 和源站 5xx 比例 | > 1% |
+
+---
+
+## Celery 集成方案
+
+### 设计目标
+
+为 IM 系统引入 Celery 异步任务队列，将耗时的 I/O 操作从请求处理路径中剥离，提升 API 响应速度；同时引入 Celery Beat 定时调度器，替代现有基于 `threading.Thread` 的定时任务，提供更可靠的定时任务管理。
+
+### 当前痛点
+
+| 痛点 | 现状 | 影响 |
+|------|------|------|
+| 邮件发送阻塞请求 | `send_verification_email` / `send_password_reset_email` 在注册/重置密码接口中同步执行 | SMTP 超时导致 API 响应慢（3-10s） |
+| 离线推送邮件阻塞消费 | push-service 中 `send_offline_notification` 同步执行 | SMTP 故障导致 Kafka 消费延迟 |
+| 密钥轮换用线程 | `threading.Thread(daemon=True)` 运行 `rotate_keys_periodically` | 进程重启丢失调度状态，无法监控 |
+| 无过期数据清理 | 过期 RefreshToken、旧头像文件无清理机制 | 数据库/磁盘持续膨胀 |
+| 无 ES 全量重建 | 索引数据只能通过 Kafka 增量同步，无法全量重建 | ES 数据不一致时无修复手段 |
+
+### 架构设计
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │           Redis (Broker + Backend)       │
+                    │  ┌──────────┐  ┌──────────────────────┐ │
+                    │  │  Broker   │  │  Result Backend      │ │
+                    │  │ (任务队列) │  │ (celery-task-meta-*) │ │
+                    │  └────┬─────┘  └──────────┬───────────┘ │
+                    └───────┼────────────────────┼─────────────┘
+                            │                    │
+              ┌─────────────┼────────────────────┼─────────────┐
+              │             ▼                    ▼             │
+              │  ┌──────────────────────────────────────────┐  │
+              │  │          Celery Worker 进程               │  │
+              │  │                                          │  │
+              │  │  Queue: emails      → 邮件发送任务        │  │
+              │  │  Queue: default     → 通用异步任务        │  │
+              │  │  Queue: search      → ES 索引操作任务     │  │
+              │  │  Queue: maintenance → 数据清理定时任务     │  │
+              │  └──────────────────────────────────────────┘  │
+              │             ▲                    ▲             │
+              │             │                    │             │
+              │  ┌──────────┴──────┐  ┌─────────┴──────────┐  │
+              │  │  Celery Beat    │  │  各微服务            │  │
+              │  │  (定时调度器)    │  │  (任务生产者)        │  │
+              │  └─────────────────┘  └────────────────────┘  │
+              │             Celery 集群                        │
+              └───────────────────────────────────────────────┘
+```
+
+**核心设计决策：**
+
+- **Broker**：复用现有 Redis，无需新增中间件
+- **Result Backend**：复用 Redis，任务结果存储在 `celery-task-meta-*` 键中
+- **共享任务模块**：各微服务通过 `services/common/celery_app.py` 共享 Celery 配置和任务定义
+- **Worker 部署**：独立 Worker 容器，按队列分流，可独立扩缩容
+
+### 任务分类
+
+#### 1. 邮件任务（Queue: `emails`）
+
+| 任务名 | 触发方式 | 说明 |
+|--------|---------|------|
+| `send_verification_email_task` | user-service 注册时调用 | 发送邮箱验证邮件 |
+| `send_password_reset_email_task` | user-service 请求重置时调用 | 发送密码重置邮件 |
+| `send_offline_notification_task` | push-service 离线推送时调用 | 发送离线消息通知邮件 |
+
+**改造前（同步阻塞）：**
+
+```python
+# user-service/services/auth_service.py
+def send_verification_email(user: User):
+    token = secrets.token_urlsafe(32)
+    user.verification_token = token
+    user.verification_expiry = datetime.utcnow() + timedelta(hours=24)
+    link = f"{FRONTEND_URL}/verify-email?token={token}"
+    body = f"<h1>Verify your email</h1><p><a href='{link}'>Verify Email</a></p>"
+    return send_email(user.email, "Verify your email", body)  # 同步 SMTP，3-10s
+```
+
+**改造后（异步 Celery）：**
+
+```python
+# user-service/services/auth_service.py
+def send_verification_email(user: User):
+    token = secrets.token_urlsafe(32)
+    user.verification_token = token
+    user.verification_expiry = datetime.utcnow() + timedelta(hours=24)
+    # 数据库先保存 token，再异步发邮件
+    link = f"{FRONTEND_URL}/verify-email?token={token}"
+    body = f"<h1>Verify your email</h1><p><a href='{link}'>Verify Email</a></p>"
+    send_verification_email_task.delay(user.email, "Verify your email", body)
+    return True  # 立即返回，邮件后台发送
+```
+
+```python
+# services/common/celery_tasks.py
+@celery_app.task(queue="emails", bind=True, max_retries=3, default_retry_delay=60)
+def send_verification_email_task(self, to_email, subject, body):
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = SMTP_USER
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "html"))
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+    except Exception as exc:
+        raise self.retry(exc=exc)
+```
+
+#### 2. 搜索索引任务（Queue: `search`）
+
+| 任务名 | 触发方式 | 说明 |
+|--------|---------|------|
+| `reindex_messages_task` | 管理接口手动触发 | 从 ScyllaDB 全量重建消息索引 |
+| `reindex_users_task` | 管理接口手动触发 | 从 MySQL 全量重建用户索引 |
+| `reindex_rooms_task` | 管理接口手动触发 | 从 MySQL 全量重建房间索引 |
+
+**全量重建索引示例：**
+
+```python
+@celery_app.task(queue="search", bind=True)
+def reindex_messages_task(self):
+    from cassandra.cluster import Cluster
+    from database import MESSAGES_INDEX, MESSAGES_MAPPING
+
+    es = get_es_client()
+    # 删除旧索引并重建
+    if es.indices.exists(index=MESSAGES_INDEX):
+        es.indices.delete(index=MESSAGES_INDEX)
+    es.indices.create(index=MESSAGES_INDEX, body=MESSAGES_MAPPING)
+
+    # 从 ScyllaDB 批量读取并写入 ES
+    cluster = Cluster(SCYLLA_HOSTS, port=SCYLLA_PORT)
+    session = cluster.connect(SCYLLA_KEYSPACE)
+    rows = session.execute("SELECT id, room_id, sender_id, content, created_at FROM messages")
+
+    bulk_body = []
+    for row in rows:
+        bulk_body.append({"index": {"_index": MESSAGES_INDEX, "_id": str(row.id)}})
+        bulk_body.append({
+            "message_id": str(row.id),
+            "room_id": row.room_id,
+            "sender_id": row.sender_id,
+            "content": row.content,
+            "created_at": row.created_at.isoformat() if row.created_at else None
+        })
+        if len(bulk_body) >= 2000:  # 每 1000 条批量提交
+            es.bulk(body=bulk_body)
+            bulk_body = []
+    if bulk_body:
+        es.bulk(body=bulk_body)
+
+    cluster.shutdown()
+    return {"status": "completed", "index": MESSAGES_INDEX}
+```
+
+#### 3. 定时任务（Celery Beat）
+
+| 任务名 | 调度周期 | 说明 |
+|--------|---------|------|
+| `cleanup_expired_tokens` | 每天凌晨 3:00 | 清理过期 RefreshToken |
+| `rotate_jwt_keys` | 每 24 小时 | JWT 密钥轮换（替代 threading.Thread） |
+| `cleanup_orphan_avatars` | 每周日凌晨 4:00 | 清理无引用的旧头像文件 |
+| `es_index_health_check` | 每 30 分钟 | 检查 ES 索引健康状态并告警 |
+
+**Beat 调度配置：**
+
+```python
+celery_app.conf.beat_schedule = {
+    "cleanup-expired-tokens": {
+        "task": "services.common.celery_tasks.cleanup_expired_tokens",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    "rotate-jwt-keys": {
+        "task": "services.common.celery_tasks.rotate_jwt_keys",
+        "schedule": crontab(hour="*/24"),
+    },
+    "cleanup-orphan-avatars": {
+        "task": "services.common.celery_tasks.cleanup_orphan_avatars",
+        "schedule": crontab(day_of_week=0, hour=4, minute=0),
+    },
+    "es-index-health-check": {
+        "task": "services.common.celery_tasks.es_index_health_check",
+        "schedule": crontab(minute="*/30"),
+    },
+}
+```
+
+**定时任务示例：**
+
+```python
+@celery_app.task(queue="maintenance")
+def cleanup_expired_tokens():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from datetime import datetime
+
+    engine = create_engine(DATABASE_URL)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    try:
+        result = db.query(RefreshToken).filter(
+            RefreshToken.expires_at < datetime.utcnow()
+        ).delete()
+        db.commit()
+        return {"deleted_count": result}
+    finally:
+        db.close()
+
+@celery_app.task(queue="maintenance")
+def rotate_jwt_keys():
+    kms = KeyManagementService()
+    for kt in ("access", "refresh"):
+        kms.delete_old_keys(kt)
+        kms.deactivate_old_keys(kt)
+        kms.generate_new_key(kt)
+    return {"status": "rotated", "timestamp": datetime.utcnow().isoformat()}
+```
+
+### 代码结构
+
+```
+services/common/
+├── celery_app.py          # Celery 实例配置（Broker、序列化、时区等）
+├── celery_tasks.py        # 共享任务定义（邮件、索引重建、定时任务）
+├── nacos_client.py        # 现有
+└── ha_database.py         # 现有
+
+services/user-service/
+├── main.py                # 调用 send_verification_email_task.delay() 替代同步邮件
+├── services/auth_service.py  # 移除 send_email() 同步实现，改为调用 Celery 任务
+└── ...
+
+services/push-service/
+├── services/push_handler.py  # 调用 send_offline_notification_task.delay() 替代同步邮件
+└── ...
+
+services/search-service/
+├── main.py                # 新增 /api/search/reindex 管理接口，触发全量重建
+└── ...
+```
+
+### celery_app.py 核心配置
+
+```python
+# services/common/celery_app.py
+from celery import Celery
+import os
+
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/1")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
+
+celery_app = Celery(
+    "4chat",
+    broker=CELERY_BROKER_URL,
+    backend=CELERY_RESULT_BACKEND,
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_track_started=True,
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_routes={
+        "services.common.celery_tasks.send_*": {"queue": "emails"},
+        "services.common.celery_tasks.reindex_*": {"queue": "search"},
+        "services.common.celery_tasks.cleanup_*": {"queue": "maintenance"},
+        "services.common.celery_tasks.rotate_*": {"queue": "maintenance"},
+        "services.common.celery_tasks.es_*": {"queue": "search"},
+    },
+)
+```
+
+**设计说明：**
+- Broker 使用 Redis db1（与业务缓存 db0 隔离）
+- Result Backend 使用 Redis db2（与 Broker 隔离）
+- `task_acks_late=True`：任务执行完毕后才确认，避免 Worker 崩溃导致任务丢失
+- `worker_prefetch_multiplier=1`：每次只预取一个任务，避免长任务阻塞短任务
+- 按队列路由：邮件任务、搜索任务、维护任务分队列执行，互不影响
+
+### Docker Compose 配置
+
+在 `docker-compose.yml` 中新增：
+
+```yaml
+celery-worker-emails:
+    build: ./services/worker
+    container_name: im-celery-worker-emails
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SMTP_SERVER: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      FRONTEND_URL: http://localhost:3000
+    command: celery -A services.common.celery_app worker -Q emails --loglevel=info -c 4
+    restart: on-failure
+
+  celery-worker-default:
+    build: ./services/worker
+    container_name: im-celery-worker-default
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_user
+      SCYLLA_HOSTS: scylladb
+      SCYLLA_PORT: "9042"
+      SCYLLA_KEYSPACE: im_message
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    command: celery -A services.common.celery_app worker -Q default,search,maintenance --loglevel=info -c 2
+    restart: on-failure
+
+  celery-beat:
+    build: ./services/worker
+    container_name: im-celery-beat
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: mysql+pymysql://root:root123@mysql:3306/im_user
+    command: celery -A services.common.celery_app beat --loglevel=info
+    restart: on-failure
+```
+
+### Worker Dockerfile
+
+```dockerfile
+# services/worker/Dockerfile
+FROM python:3.11.15
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+```
+
+```txt
+# services/worker/requirements.txt
+celery[redis]>=5.4.0
+redis
+sqlalchemy
+pymysql
+cryptography
+python-jose[cryptography]
+elasticsearch>=8.0.0,<9.0.0
+cassandra-driver
+```
+
+### 管理接口
+
+在 search-service 中新增全量重建接口：
+
+```
+POST /api/search/reindex/messages    → 触发 reindex_messages_task
+POST /api/search/reindex/users       → 触发 reindex_users_task
+POST /api/search/reindex/rooms       → 触发 reindex_rooms_task
+GET  /api/search/reindex/status/{task_id}  → 查询重建进度
+```
+
+**响应示例：**
+
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "PENDING",
+  "message": "Reindex task submitted"
+}
+```
+
+### Celery 监控（Flower）
+
+```yaml
+celery-flower:
+    image: mher/flower:2.0
+    container_name: im-celery-flower
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - FLOWER_PORT=5555
+    restart: on-failure
+```
+
+访问 `http://localhost:5555` 查看：
+- Worker 状态和负载
+- 任务执行历史和成功率
+- 队列深度和消息积压
+- 定时任务调度状态
+
+### 各服务改造清单
+
+| 服务 | 改造内容 |
+|------|---------|
+| user-service | `send_verification_email` / `send_password_reset_email` 改为调用 Celery 任务；移除 `threading.Thread` 密钥轮换，改由 Celery Beat 调度 |
+| push-service | `send_offline_notification` 改为调用 Celery 任务 |
+| search-service | 新增 `/api/search/reindex/*` 管理接口，触发全量重建任务 |
+| 新增 worker 服务 | 独立 Celery Worker + Beat 容器 |
+
+### Celery 高可用部署
+
+| 场景 | Worker 配置 | Beat 配置 |
+|------|------------|-----------|
+| 开发/测试 | 1 Worker（所有队列） | 1 Beat |
+| 生产（小规模） | 2 Worker（1 emails + 1 default/search/maintenance） | 1 Beat |
+| 生产（大规模） | 3+ Worker（1 emails + 1 search + 1+ default/maintenance） | 1 Beat（K8s Leader Election 防重复） |
+
+**K8s 部署注意事项：**
+- Beat 只能运行 1 个实例，使用 `replicas: 1` + `podDisruptionBudget` 保证可用性
+- Worker 可按队列独立扩缩容，使用 HPA 根据队列深度自动伸缩
+- 使用 `celery -A app inspect active` 监控 Worker 状态
 
 ---
 

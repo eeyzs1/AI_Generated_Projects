@@ -53,13 +53,12 @@ const Register: React.FC = () => {
       const responseData = await registerResponse.json();
       console.log('Registration successful:', responseData);
       
-      setSuccess('Registration successful!');
+      setSuccess('Registration submitted! Please check your email to verify your account within 30 minutes.');
       setError('');
       
-      // 延迟导航到登录页面
       setTimeout(() => {
         navigate('/login');
-      }, 1500);
+      }, 3000);
     } catch (err) {
       console.error('Registration error:', err);
       // 显示后端传来的具体错误信息

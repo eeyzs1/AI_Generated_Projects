@@ -26,9 +26,9 @@ const VerifyEmail: React.FC = () => {
         setMessage(data.message);
         setError('');
       } else {
-        // 检查是否是因为 token 已经被使用过
-        if (data.detail === 'Invalid or expired token') {
-          // 不显示错误，因为用户可能已经验证过了
+        if (data.detail && data.detail.includes('expired')) {
+          setError('Verification link has expired. Please register again.');
+        } else if (data.detail === 'Invalid or expired token') {
           setMessage('Email already verified. You can now login.');
           setError('');
         } else {

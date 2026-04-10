@@ -10,20 +10,25 @@ import redis as redis_lib
 from database import get_db, engine, Base
 from ha_database import get_redis_client
 from models.user import User
+from models.pending_registration import PendingRegistration
 from models.contact import contact
 from schemas.user import UserCreate, UserUpdate, User as UserSchema, Token, UserLogin, PasswordResetRequest, PasswordReset
 from schemas.contact import contactCreate, contact as contactSchema, ContactResponse, contactAction
 from services.auth_service import (
     get_password_hash, authenticate_user, create_access_token, create_refresh_token,
     verify_token, ACCESS_TOKEN_EXPIRE_MINUTES, send_verification_email,
-    send_password_reset_email, get_user_by_verification_token, get_user_by_email,
-    get_user_by_reset_token, store_refresh_token, verify_refresh_token, revoke_refresh_token
+    send_password_reset_email, get_user_by_email,
+    get_user_by_reset_token, store_refresh_token, verify_refresh_token, revoke_refresh_token,
+    get_pending_by_username, get_pending_by_email, finalize_registration
 )
 from services.contact_service import (
     send_contact_request, get_user_contact_requests, handle_contact_request,
     get_user_contacts, remove_contact, search_users
 )
 from nacos_client import register_service
+from kafka_producer import publish
+
+CDN_BASE_URL = os.environ.get("CDN_BASE_URL", "")
 
 Base.metadata.create_all(bind=engine)
 
@@ -77,39 +82,76 @@ def save_base64_avatar(base64_data: str) -> str:
     filename = f"{uuid.uuid4()}.{ext}"
     with open(os.path.join(AVATAR_UPLOAD_DIR, filename), "wb") as f:
         f.write(data)
-    return f"/api/storage/static/avatars/{filename}"
+    path = f"/api/storage/static/avatars/{filename}"
+    if CDN_BASE_URL:
+        return path.replace("/api/storage/static/", f"{CDN_BASE_URL}/static/")
+    return path
+
+def get_avatar_url(avatar_path: str) -> str:
+    if not avatar_path:
+        return avatar_path
+    if CDN_BASE_URL and avatar_path.startswith("/api/storage/static/"):
+        return avatar_path.replace("/api/storage/static/", f"{CDN_BASE_URL}/static/")
+    return avatar_path
 
 # ── Public ─────────────────────────────────────────────────────
 
 @app.post("/api/user/register")
-def register(user: UserCreate, db: Session = Depends(get_db)):
+async def register(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == user.username).first():
         raise HTTPException(400, "Username already registered")
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(400, "Email already registered")
+
+    existing_pending_username = get_pending_by_username(db, user.username)
+    if existing_pending_username:
+        db.delete(existing_pending_username)
+        db.commit()
+    existing_pending_email = get_pending_by_email(db, user.email)
+    if existing_pending_email:
+        db.delete(existing_pending_email)
+        db.commit()
+
     avatar_url = None
     if user.avatar:
         avatar_url = save_base64_avatar(user.avatar) if user.avatar.startswith("data:image/") else user.avatar
-    db_user = User(username=user.username, displayname=user.displayname, email=user.email,
-                   password_hash=get_password_hash(user.password), avatar=avatar_url, email_verified=False)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    send_verification_email(db_user)
-    db.commit()
-    return {"message": "Registration successful. Please check your email to verify your account."}
+
+    password_hash = get_password_hash(user.password)
+
+    send_verification_email(
+        redis, db,
+        username=user.username,
+        displayname=user.displayname,
+        email=user.email,
+        password_hash=password_hash,
+        avatar=avatar_url,
+    )
+
+    return {"message": "Registration submitted. Please check your email to verify your account within 30 minutes."}
 
 @app.get("/api/user/verify-email")
-def verify_email(token: str, db: Session = Depends(get_db)):
-    user = get_user_by_verification_token(db, token)
-    if not user:
-        raise HTTPException(404, "Invalid or expired token")
-    if user.verification_expiry < datetime.utcnow():
-        raise HTTPException(400, "Token has expired")
-    user.email_verified = True
-    user.verification_token = None
-    user.verification_expiry = None
-    db.commit()
+async def verify_email(token: str, db: Session = Depends(get_db)):
+    try:
+        new_user = finalize_registration(redis, db, token)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+    if not new_user:
+        raise HTTPException(404, "Invalid or expired verification link. Please register again.")
+
+    try:
+        await publish("user_updated", {
+            "type": "user_updated",
+            "user_id": new_user.id,
+            "username": new_user.username,
+            "displayname": new_user.displayname,
+            "email": new_user.email,
+            "avatar": new_user.avatar,
+            "is_active": new_user.is_active
+        })
+    except Exception:
+        pass
+
     return {"message": "Email verified successfully. You can now login."}
 
 @app.post("/api/user/reset-password-request")
@@ -178,7 +220,7 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
     return resp
 
 @app.put("/api/user/me", response_model=UserSchema)
-def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         if user_update.username != current_user.username and db.query(User).filter(User.username == user_update.username).first():
             raise HTTPException(400, "Username already registered")
@@ -194,6 +236,15 @@ def update_me(user_update: UserUpdate, current_user: User = Depends(get_current_
         db.commit()
         db.refresh(current_user)
         redis.delete(f"user:{current_user.id}")
+        await publish("user_updated", {
+            "type": "user_updated",
+            "user_id": current_user.id,
+            "username": current_user.username,
+            "displayname": current_user.displayname,
+            "email": current_user.email,
+            "avatar": current_user.avatar,
+            "is_active": current_user.is_active
+        })
         return current_user
     except HTTPException:
         raise
@@ -267,8 +318,9 @@ def get_user_internal(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
+    avatar = get_avatar_url(user.avatar) if user.avatar else user.avatar
     data = {"id": user.id, "username": user.username, "displayname": user.displayname,
-            "email": user.email, "avatar": user.avatar, "is_active": user.is_active,
+            "email": user.email, "avatar": avatar, "is_active": user.is_active,
             "email_verified": user.email_verified}
     redis.setex(f"user:{user_id}", 300, json.dumps(data))
     return data

@@ -8,8 +8,43 @@
 #include <immintrin.h>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <stdexcept>
 #include <cmath>
+#include <new>
+
+template <typename T, size_t Alignment>
+class AlignedAllocator {
+public:
+    using value_type = T;
+    using size_type = size_t;
+    using difference_type = ptrdiff_t;
+
+    AlignedAllocator() noexcept = default;
+
+    template <typename U>
+    AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
+
+    T* allocate(size_t n) {
+        void* ptr = nullptr;
+        if (posix_memalign(&ptr, Alignment, n * sizeof(T)) != 0) {
+            throw std::bad_alloc();
+        }
+        return static_cast<T*>(ptr);
+    }
+
+    void deallocate(T* ptr, size_t) noexcept {
+        free(ptr);
+    }
+
+    template <typename U>
+    struct rebind {
+        using other = AlignedAllocator<U, Alignment>;
+    };
+
+    bool operator==(const AlignedAllocator&) const noexcept { return true; }
+    bool operator!=(const AlignedAllocator&) const noexcept { return false; }
+};
 
 #ifdef USE_OPENBLAS
 extern "C" {
@@ -216,7 +251,7 @@ protected:
 public:
     VectorStorage(size_t dimension) 
         : d(dimension), ntotal(0), transposed(false) {
-        size_t reserve_size = 1000000 * dimension;
+        size_t reserve_size = std::min(size_t(100000) * dimension, size_t(256) * 1024 * 1024 / sizeof(float));
         xb.reserve(reserve_size);
         xb_transposed.reserve(reserve_size);
     }
@@ -254,6 +289,51 @@ public:
         transposed = false;
         xb_transposed.clear();
     }
+
+    std::vector<uint8_t> save_to_bytes() const {
+        std::vector<uint8_t> result;
+        
+        size_t d_val = d;
+        size_t ntotal_val = ntotal;
+        
+        result.resize(sizeof(size_t) * 2 + xb.size() * sizeof(float));
+        size_t offset = 0;
+        
+        std::memcpy(result.data() + offset, &d_val, sizeof(size_t));
+        offset += sizeof(size_t);
+        
+        std::memcpy(result.data() + offset, &ntotal_val, sizeof(size_t));
+        offset += sizeof(size_t);
+        
+        std::memcpy(result.data() + offset, xb.data(), xb.size() * sizeof(float));
+        
+        return result;
+    }
+
+    void load_from_bytes(const uint8_t* bytes, size_t length) {
+        if (length < sizeof(size_t) * 2) {
+            throw std::runtime_error("Invalid data: too short");
+        }
+        
+        size_t offset = 0;
+        
+        std::memcpy(&d, bytes + offset, sizeof(size_t));
+        offset += sizeof(size_t);
+        
+        std::memcpy(&ntotal, bytes + offset, sizeof(size_t));
+        offset += sizeof(size_t);
+        
+        size_t expected_data_len = ntotal * d * sizeof(float);
+        if (length - offset != expected_data_len) {
+            throw std::runtime_error("Invalid data: length mismatch");
+        }
+        
+        xb.resize(ntotal * d);
+        std::memcpy(xb.data(), bytes + offset, expected_data_len);
+        
+        transposed = false;
+        xb_transposed.clear();
+    }
 };
 
 class IndexInterface {
@@ -266,6 +346,9 @@ public:
     virtual void train(size_t n, const float* x) {}
     virtual size_t get_ntotal() const = 0;
     virtual size_t get_dimension() const = 0;
+    
+    virtual std::vector<uint8_t> save() const { return {}; }
+    virtual void load(const uint8_t* /*bytes*/, size_t /*length*/) {}
 };
 
 }

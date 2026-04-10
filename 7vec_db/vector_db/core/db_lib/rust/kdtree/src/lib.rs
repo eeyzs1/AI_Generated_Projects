@@ -1,9 +1,8 @@
 use pyo3::prelude::*;
-use core::distance;
-use core::VectorStorage;
+use vectordb_core::distance;
+use vectordb_core::VectorStorage;
 use std::collections::BinaryHeap;
-use std::cmp::Reverse;
-use ordered_float::NotNan;
+use ordered_float::OrderedFloat;
 
 #[pyclass]
 struct KDNode {
@@ -29,6 +28,7 @@ struct IndexKDTree {
     storage: VectorStorage,
     leaf_size: usize,
     root: Option<Box<KDNode>>,
+    built: bool,
 }
 
 #[pymethods]
@@ -40,6 +40,7 @@ impl IndexKDTree {
             storage: VectorStorage::new(dimension),
             leaf_size,
             root: None,
+            built: false,
         }
     }
 
@@ -49,64 +50,80 @@ impl IndexKDTree {
             return Ok(());
         }
 
-        let dim = self.storage.dimension;
-        let old_total = self.storage.size;
+        let dim = self.storage.dimension();
         let mut flat_data = Vec::with_capacity(n * dim);
         for vec in x {
             flat_data.extend(vec);
         }
         self.storage.add(n, &flat_data);
-
-        let mut indices: Vec<usize> = (old_total..self.storage.size).collect();
-        self.root = self.build_tree(&mut indices, 0);
+        self.built = false;
 
         Ok(())
     }
 
-    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<i64>>, Vec<Vec<f32>>)> {
-        let _dim = self.storage.dimension;
-        let mut all_labels = Vec::with_capacity(x.len());
+    fn build(&mut self) -> PyResult<()> {
+        if self.storage.size() == 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "No vectors added yet",
+            ));
+        }
+
+        let mut indices: Vec<usize> = (0..self.storage.size()).collect();
+        self.root = self.build_tree(&mut indices, 0);
+        self.built = true;
+
+        Ok(())
+    }
+
+    fn search(&self, x: Vec<Vec<f32>>, k: usize) -> PyResult<(Vec<Vec<f32>>, Vec<Vec<i64>>)> {
+        if !self.built {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Index not built. Call build() after adding vectors.",
+            ));
+        }
+        let _dim = self.storage.dimension();
         let mut all_distances = Vec::with_capacity(x.len());
+        let mut all_labels = Vec::with_capacity(x.len());
 
         for query in x {
-            let mut heap = BinaryHeap::new();
+            let mut heap: BinaryHeap<(OrderedFloat<f32>, usize)> = BinaryHeap::new();
             if let Some(root) = &self.root {
                 self.search_k_nearest(&query, root, k, &mut heap);
             }
 
             let mut results = Vec::with_capacity(heap.len());
-            while let Some(Reverse((dist, idx))) = heap.pop() {
-                results.push((dist.into_inner(), idx as i64));
+            while let Some((dist, idx)) = heap.pop() {
+                results.push((dist.0, idx as i64));
             }
             results.reverse();
 
             let take = std::cmp::min(k, results.len());
-            let mut labels = Vec::with_capacity(k);
             let mut distances = Vec::with_capacity(k);
+            let mut labels = Vec::with_capacity(k);
             for (dist, idx) in results.iter().take(take) {
-                labels.push(*idx);
                 distances.push(*dist);
+                labels.push(*idx);
             }
             for _ in take..k {
-                labels.push(0);
                 distances.push(0.0);
+                labels.push(0);
             }
 
-            all_labels.push(labels);
             all_distances.push(distances);
+            all_labels.push(labels);
         }
 
-        Ok((all_labels, all_distances))
+        Ok((all_distances, all_labels))
     }
 
     #[getter]
     fn ntotal(&self) -> usize {
-        self.storage.size
+        self.storage.size()
     }
 
     #[getter]
     fn dimension(&self) -> usize {
-        self.storage.dimension
+        self.storage.dimension()
     }
 
     #[getter]
@@ -121,13 +138,13 @@ impl IndexKDTree {
             return None;
         }
 
-        let dim = self.storage.dimension;
+        let dim = self.storage.dimension();
         let axis = depth % dim;
 
         indices.sort_by(|&a, &b| {
-            let va = &self.storage.vectors[a * dim..(a + 1) * dim];
-            let vb = &self.storage.vectors[b * dim..(b + 1) * dim];
-            va[axis].partial_cmp(&vb[axis]).unwrap()
+            let va = self.storage.get_vector(a);
+            let vb = self.storage.get_vector(b);
+            va[axis].total_cmp(&vb[axis])
         });
 
         let median = indices.len() / 2;
@@ -142,16 +159,16 @@ impl IndexKDTree {
         Some(node)
     }
 
-    fn search_k_nearest(&self, query: &[f32], node: &KDNode, k: usize, heap: &mut BinaryHeap<Reverse<(NotNan<f32>, usize)>>) {
-        let dim = self.storage.dimension;
-        let vec = &self.storage.vectors[node.index * dim..(node.index + 1) * dim];
+    fn search_k_nearest(&self, query: &[f32], node: &KDNode, k: usize, heap: &mut BinaryHeap<(OrderedFloat<f32>, usize)>) {
+        let dim = self.storage.dimension();
+        let vec = self.storage.get_vector(node.index);
         let dist = distance::compute_l2_distance(query, vec);
 
         if heap.len() < k {
-            heap.push(Reverse((NotNan::new(dist).unwrap(), node.index)));
-        } else if dist < heap.peek().unwrap().0.0.into_inner() {
+            heap.push((OrderedFloat(dist), node.index));
+        } else if OrderedFloat(dist) < heap.peek().unwrap().0 {
             heap.pop();
-            heap.push(Reverse((NotNan::new(dist).unwrap(), node.index)));
+            heap.push((OrderedFloat(dist), node.index));
         }
 
         let diff = query[node.split_axis] - vec[node.split_axis];
@@ -162,7 +179,7 @@ impl IndexKDTree {
             self.search_k_nearest(query, child, k, heap);
         }
 
-        if heap.len() < k || diff * diff < heap.peek().unwrap().0.0.into_inner() {
+        if heap.len() < k || OrderedFloat(diff * diff) < heap.peek().unwrap().0 {
             if let Some(child) = far_child {
                 self.search_k_nearest(query, child, k, heap);
             }

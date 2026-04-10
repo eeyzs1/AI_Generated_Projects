@@ -18,7 +18,7 @@ UNINSTALL=false
 RESTART=false
 UPDATE=false
 UPDATE_TARGET=""
-SERVICES=("user-service" "group-service" "message-service" "connector-service" "push-service" "storage-service")
+SERVICES=("user-service" "group-service" "message-service" "connector-service" "push-service" "storage-service" "search-service")
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # 解析参数
@@ -66,7 +66,7 @@ fi
 # ---------- 智能更新 ----------
 if [[ "$UPDATE" == true ]]; then
   REGISTRY="localhost:5000"
-  SERVICES_LIST=(user-service group-service message-service connector-service push-service storage-service frontend)
+  SERVICES_LIST=(user-service group-service message-service connector-service push-service storage-service search-service frontend)
 
   if [[ -n "$UPDATE_TARGET" ]]; then
     # 更新指定服务
@@ -193,6 +193,12 @@ if [[ "$REGISTRY_TYPE" == "dockerhub" ]]; then
     echo "  构建 $svc ..."
     docker build -t "$REGISTRY/$svc:latest" "$ROOT_DIR/services/$svc"
   done
+  echo "  构建 search-service ..."
+  docker build -t "$img_prefix/search-service:latest" "$ROOT_DIR/services/search-service"
+
+  echo "  构建 celery-worker ..."
+  docker build -t "$img_prefix/celery-worker:latest" -f "$ROOT_DIR/services/worker/Dockerfile" "$ROOT_DIR/services"
+
   echo "  构建 frontend ..."
   docker build -t "$REGISTRY/frontend:latest" "$ROOT_DIR/frontend"
 
@@ -221,6 +227,17 @@ else
   for svc in "${SERVICES[@]}"; do
     build_and_load "$REGISTRY/$svc:latest" "$ROOT_DIR/services/$svc"
   done
+  echo "  构建 celery-worker ..."
+  docker build -t "$REGISTRY/celery-worker:latest" -f "$ROOT_DIR/services/worker/Dockerfile" "$ROOT_DIR/services"
+  local cw_id mk_cw_id
+  cw_id=$(docker inspect --format='{{.Id}}' "$REGISTRY/celery-worker:latest" 2>/dev/null || true)
+  mk_cw_id=$(minikube ssh -- docker inspect --format='{{.Id}}' "$REGISTRY/celery-worker:latest" 2>/dev/null | tr -d '\r' || true)
+  if [[ -n "$mk_cw_id" && "$mk_cw_id" == "$cw_id" ]]; then
+    echo "  minikube 已有最新镜像，跳过 load: celery-worker"
+  else
+    echo "  加载到 minikube: celery-worker ..."
+    minikube image load "$REGISTRY/celery-worker:latest"
+  fi
   build_and_load "$REGISTRY/frontend:latest" "$ROOT_DIR/frontend"
 fi
 
@@ -235,7 +252,10 @@ if [[ "$CLOUD_MIDDLEWARE" == false ]]; then
     "confluentinc/cp-kafka:7.9.6"
     "nacos/nacos-server:v3.1.1-slim"
     "scylladb/scylla:6.2"
+    "elasticsearch:8.17.0"
+    "kibana:8.17.0"
     "apache/apisix:3.15.0-ubuntu"
+    "mher/flower:2.0"
   )
   for img in "${MIDDLEWARE_IMAGES[@]}"; do
     load_image_if_needed "$img"
@@ -247,6 +267,7 @@ if [[ "$CLOUD_MIDDLEWARE" == false ]]; then
   kubectl apply -f "$ROOT_DIR/k8s/middleware/kafka.yaml"
   kubectl apply -f "$ROOT_DIR/k8s/middleware/nacos.yaml"
   kubectl apply -f "$ROOT_DIR/k8s/middleware/scylladb.yaml"
+  kubectl apply -f "$ROOT_DIR/k8s/middleware/elasticsearch.yaml"
 
   echo "==> 等待中间件就绪..."
   kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s
@@ -254,6 +275,7 @@ if [[ "$CLOUD_MIDDLEWARE" == false ]]; then
   kubectl wait --for=condition=ready pod -l app=kafka --timeout=300s
   kubectl wait --for=condition=ready pod -l app=nacos --timeout=300s
   kubectl wait --for=condition=ready pod -l app=scylladb --timeout=180s
+  kubectl wait --for=condition=ready pod -l app=elasticsearch --timeout=300s
 else
   echo "==> 云服务中间件模式，跳过中间件部署"
   echo "    请确保 k8s/overlays/cloud/cloud-env.yaml 中已填写正确的连接信息"
@@ -274,6 +296,7 @@ else
   done
   sed "s|localhost:5000/frontend:latest|$REGISTRY/frontend:latest|g" \
     "$ROOT_DIR/k8s/services/frontend.yaml" | kubectl apply -f -
+  kubectl apply -f "$ROOT_DIR/k8s/services/celery-workers.yaml"
 fi
 
 # 等待服务就绪

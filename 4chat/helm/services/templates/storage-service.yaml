@@ -48,6 +48,8 @@ spec:
               value: {{ .Values.global.secretKey | quote }}
             - name: ACCESS_SECRET_KEY
               value: {{ .Values.global.secretKey | quote }}
+            - name: CDN_BASE_URL
+              value: {{ .Values.storageService.cdnBaseUrl | quote }}
           volumeMounts:
             - name: avatars
               mountPath: /app/static/avatars/uploads

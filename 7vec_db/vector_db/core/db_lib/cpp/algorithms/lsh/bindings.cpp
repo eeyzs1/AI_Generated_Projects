@@ -5,7 +5,7 @@
 namespace py = pybind11;
 using namespace vectordb::algorithms;
 
-PYBIND11_MODULE(vectordb_lsh, m) {
+PYBIND11_MODULE(_lsh, m) {
     m.doc() = "VectorDB LSH Index Module";
 
     py::class_<IndexLSH>(m, "IndexLSH")
@@ -38,5 +38,8 @@ PYBIND11_MODULE(vectordb_lsh, m) {
         .def_property_readonly("ntotal", &IndexLSH::get_ntotal)
         .def_property_readonly("dimension", &IndexLSH::get_dimension)
         .def_property_readonly("num_hash_tables", &IndexLSH::get_num_hash_tables)
-        .def_property_readonly("num_hash_functions", &IndexLSH::get_num_hash_functions);
+        .def_property_readonly("num_hash_functions", &IndexLSH::get_num_hash_functions)
+        .def_property_readonly("num_probes", &IndexLSH::get_num_probes)
+        .def("set_num_probes", &IndexLSH::set_num_probes, py::arg("n"),
+             "Set number of probes per hash table for multi-probe search");
 }

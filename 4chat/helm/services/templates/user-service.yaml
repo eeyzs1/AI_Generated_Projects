@@ -47,6 +47,14 @@ spec:
               value: {{ .Values.userService.smtp.user | quote }}
             - name: SMTP_PASSWORD
               value: {{ .Values.userService.smtp.password | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.global.kafka.bootstrapServers }}
+            - name: CDN_BASE_URL
+              value: {{ .Values.userService.cdnBaseUrl | quote }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.global.celery.brokerUrl }}
+            - name: CELERY_RESULT_BACKEND
+              value: {{ .Values.global.celery.resultBackend }}
           readinessProbe:
             httpGet:
               path: /health

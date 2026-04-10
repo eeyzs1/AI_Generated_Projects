@@ -22,10 +22,14 @@ services:
       SERVICE_PORT: "8001"
       SECRET_KEY: ${SECRET_KEY}
       ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
     restart: on-failure
 
   group-service:
@@ -43,6 +47,7 @@ services:
       USER_SERVICE_URL: http://user-service:8001
       SECRET_KEY: ${SECRET_KEY}
       ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
     restart: on-failure
 
   message-service:
@@ -106,6 +111,8 @@ services:
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
     restart: on-failure
 
   storage-service:
@@ -121,8 +128,86 @@ services:
       SERVICE_PORT: "8006"
       SECRET_KEY: ${SECRET_KEY}
       ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
     volumes:
       - storage_data:/app/static/avatars/uploads
+    restart: on-failure
+
+  search-service:
+    build: ./services/search-service
+    container_name: im-search-service
+    ports:
+      - "8007:8007"
+    env_file: .env
+    environment:
+      ELASTICSEARCH_HOSTS: ${ELASTICSEARCH_HOSTS}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      NACOS_HOST: ${NACOS_HOST}
+      NACOS_PORT: ${NACOS_PORT}
+      SERVICE_HOST: search-service
+      SERVICE_PORT: "8007"
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_SECRET_KEY: ${ACCESS_SECRET_KEY}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+    restart: on-failure
+
+  celery-worker-emails:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-worker-emails
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      SMTP_SERVER: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    command: celery -A services.common.celery_app worker -Q emails --loglevel=info -c 4
+    restart: on-failure
+
+  celery-worker-default:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-worker-default
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      DATABASE_URL: ${MYSQL_USER_URL}
+      SCYLLA_HOSTS: ${SCYLLA_HOSTS}
+      SCYLLA_PORT: ${SCYLLA_PORT:-9042}
+      SCYLLA_KEYSPACE: im_message
+      ELASTICSEARCH_HOSTS: ${ELASTICSEARCH_HOSTS}
+      AVATAR_UPLOAD_DIR: /app/static/avatars
+    command: celery -A services.common.celery_app worker -Q default,search,maintenance --loglevel=info -c 2
+    restart: on-failure
+
+  celery-beat:
+    build:
+      context: ./services
+      dockerfile: worker/Dockerfile
+    container_name: im-celery-beat
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      DATABASE_URL: ${MYSQL_USER_URL}
+    command: celery -A services.common.celery_app beat --loglevel=info
+    restart: on-failure
+
+  celery-flower:
+    image: mher/flower:2.0
+    container_name: im-celery-flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - FLOWER_PORT=5555
     restart: on-failure
 
   apisix:
