@@ -22,3 +22,6 @@
 [submodule "im_micro_svcs"]
 	path = im_micro_svcs
 	url = git@github.com:eeyzs1/im_micro_svcs.git
+[submodule "vector_db"]
+	path = vector_db
+	url = git@github.com:eeyzs1/vector_db.git
