@@ -16,3 +16,9 @@
 [submodule "FE"]
 	path = FE
 	url = git@github.com:eeyzs1/FE.git
+[submodule "company_analyzer"]
+	path = company_analyzer
+	url = git@github.com:eeyzs1/company_analyzer.git
+[submodule "im_micro_svcs"]
+	path = im_micro_svcs
+	url = git@github.com:eeyzs1/im_micro_svcs.git
