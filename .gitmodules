@@ -25,3 +25,9 @@
 [submodule "vector_db"]
 	path = vector_db
 	url = git@github.com:eeyzs1/vector_db.git
+[submodule "webcrawler"]
+	path = webcrawler
+	url = git@github.com:eeyzs1/webcrawler.git
+[submodule "AIMSA"]
+	path = AIMSA
+	url = git@github.com:eeyzs1/AIMSA.git
