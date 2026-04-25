@@ -31,3 +31,6 @@
 [submodule "AIMSA"]
 	path = AIMSA
 	url = git@github.com:eeyzs1/AIMSA.git
+[submodule "AIFSI"]
+	path = AIFSI
+	url = git@github.com:eeyzs1/AIFSI.git
