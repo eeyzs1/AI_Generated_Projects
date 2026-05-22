@@ -34,3 +34,18 @@
 [submodule "AIFSI"]
 	path = AIFSI
 	url = git@github.com:eeyzs1/AIFSI.git
+[submodule "llm_ranking_list"]
+	path = llm_ranking_list
+	url = git@github.com:eeyzs1/llm_ranking_list.git
+[submodule "rfbrowser"]
+	path = rfbrowser
+	url = git@github.com:eeyzs1/rfbrowser.git
+[submodule "DataMind"]
+	path = DataMind
+	url = git@github.com:eeyzs1/DataMind.git
+[submodule "rfbrowser-marketplace"]
+	path = rfbrowser-marketplace
+	url = git@github.com:eeyzs1/rfbrowser-marketplace.git
+[submodule "rfbrowser-plugin-dataview"]
+	path = rfbrowser-plugin-dataview
+	url = git@github.com:eeyzs1/rfbrowser-plugin-dataview.git
