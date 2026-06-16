@@ -49,3 +49,9 @@
 [submodule "rfbrowser-plugin-dataview"]
 	path = rfbrowser-plugin-dataview
 	url = git@github.com:eeyzs1/rfbrowser-plugin-dataview.git
+[submodule "freelancer"]
+	path = freelancer
+	url = git@github.com:eeyzs1/freelancer.git
+[submodule "meta_harness"]
+	path = meta_harness
+	url = git@github.com:eeyzs1/meta_harness.git
